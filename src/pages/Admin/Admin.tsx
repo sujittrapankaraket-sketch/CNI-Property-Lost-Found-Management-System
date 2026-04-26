@@ -1,14 +1,21 @@
 import { useState } from 'react';
-import { Users, Database, ClipboardList, Settings, Plus, Pencil, Trash2, Shield, Clock, UsersRound, Calendar } from 'lucide-react';
+import { Users, Database, ClipboardList, Settings, Plus, Pencil, Trash2, Shield, Clock, UsersRound, Calendar, Wifi, CheckCircle2, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import PageWrapper from '../../components/layout/PageWrapper';
 import Modal from '../../components/ui/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import type { User, UserGroup, PropertyCategory, Area, StorageLocation } from '../../types';
+import type { User, UserGroup, PropertyCategory, Area, StorageLocation, RFIDReaderConfig, RFIDConnectionType } from '../../types';
 
-type Tab = 'users' | 'groups' | 'master' | 'audit' | 'settings';
+type Tab = 'users' | 'groups' | 'master' | 'audit' | 'settings' | 'rfid';
+
+const CONN_LABELS: Record<RFIDConnectionType, string> = {
+  keyboard: 'Keyboard Emulation (USB HID)',
+  usb_serial: 'USB Serial (COM Port)',
+  tcp_ip: 'Network TCP/IP',
+  bluetooth: 'Bluetooth',
+};
 
 const DEFAULT_PERMS = {
   lost_report: true, found_report: true, search_match: true,
@@ -17,7 +24,7 @@ const DEFAULT_PERMS = {
 
 export default function Admin() {
   const { getUsers, updateUser, addUser, deleteUser, getGroups, addGroup, updateGroup, deleteGroup, settings, updateSettings } = useAuth();
-  const { masterData, addCategory, updateCategory, deleteCategory, addArea, updateArea, deleteArea, addStorageLocation, updateStorageLocation, deleteStorageLocation, auditLogs } = useData();
+  const { masterData, addCategory, updateCategory, deleteCategory, addArea, updateArea, deleteArea, addStorageLocation, updateStorageLocation, deleteStorageLocation, auditLogs, rfidReaders, activeReaderId, addRFIDReader, updateRFIDReader, deleteRFIDReader, setActiveReader } = useData();
   const [tab, setTab] = useState<Tab>('users');
 
   // ── user state ────────────────────────────────────────────────────────────
@@ -119,6 +126,24 @@ export default function Admin() {
   // ── settings state ────────────────────────────────────────────────────────
   const [sessionMin, setSessionMin] = useState(settings.sessionTimeoutMinutes);
 
+  // ── RFID reader state ─────────────────────────────────────────────────────
+  const [rfidModal, setRfidModal] = useState(false);
+  const [editRfid, setEditRfid] = useState<RFIDReaderConfig | null>(null);
+  const RFID_DEFAULT = { name: '', areaId: '', connectionType: 'keyboard' as RFIDConnectionType, serialPort: '', baudRate: 9600, ipAddress: '', tcpPort: 8080, bluetoothName: '', tagPrefix: '', tagSuffix: '', isActive: true, note: '' };
+  const [rfidForm, setRfidForm] = useState(RFID_DEFAULT);
+
+  const openNewRfid = () => { setEditRfid(null); setRfidForm(RFID_DEFAULT); setRfidModal(true); };
+  const openEditRfid = (r: RFIDReaderConfig) => {
+    setEditRfid(r);
+    setRfidForm({ name: r.name, areaId: r.areaId, connectionType: r.connectionType, serialPort: r.serialPort ?? '', baudRate: r.baudRate ?? 9600, ipAddress: r.ipAddress ?? '', tcpPort: r.tcpPort ?? 8080, bluetoothName: r.bluetoothName ?? '', tagPrefix: r.tagPrefix ?? '', tagSuffix: r.tagSuffix ?? '', isActive: r.isActive, note: r.note ?? '' });
+    setRfidModal(true);
+  };
+  const saveRfid = () => {
+    const data: RFIDReaderConfig = { ...editRfid, ...rfidForm, id: editRfid?.id ?? Date.now().toString(), createdAt: editRfid?.createdAt ?? new Date().toISOString() };
+    editRfid ? updateRFIDReader(data) : addRFIDReader(data);
+    setRfidModal(false);
+  };
+
   // ── shared label maps ─────────────────────────────────────────────────────
   const PERM_LABELS: [keyof typeof DEFAULT_PERMS, string][] = [
     ['lost_report',          'แจ้งสูญหาย'],
@@ -130,11 +155,12 @@ export default function Admin() {
   ];
 
   const TABS = [
-    { key: 'users',   label: 'ผู้ใช้งาน',       icon: Users         },
-    { key: 'groups',  label: 'กลุ่มผู้ใช้',      icon: UsersRound    },
-    { key: 'master',  label: 'ข้อมูลหลัก',       icon: Database      },
-    { key: 'audit',   label: 'ประวัติการใช้งาน', icon: ClipboardList },
-    { key: 'settings',label: 'ตั้งค่าระบบ',      icon: Settings      },
+    { key: 'users',    label: 'ผู้ใช้งาน',         icon: Users         },
+    { key: 'groups',   label: 'กลุ่มผู้ใช้',        icon: UsersRound    },
+    { key: 'master',   label: 'ข้อมูลหลัก',         icon: Database      },
+    { key: 'rfid',     label: 'RFID Reader',        icon: Wifi          },
+    { key: 'audit',    label: 'ประวัติการใช้งาน',   icon: ClipboardList },
+    { key: 'settings', label: 'ตั้งค่าระบบ',        icon: Settings      },
   ] as const;
 
   return (
@@ -327,6 +353,86 @@ export default function Admin() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── RFID Reader Config Tab ─────────────────────────────────────────── */}
+      {tab === 'rfid' && (
+        <div className="space-y-4">
+          {/* Device active reader selector */}
+          <div className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 flex-shrink-0">
+              <Wifi size={15} className="text-primary" /> เครื่องอ่าน RFID ของอุปกรณ์นี้:
+            </div>
+            <select
+              value={activeReaderId}
+              onChange={e => setActiveReader(e.target.value)}
+              className="form-input flex-1 max-w-xs"
+            >
+              <option value="">— ยังไม่เลือกเครื่องอ่าน —</option>
+              {rfidReaders.filter(r => r.isActive).map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+            {activeReaderId && (
+              <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                <CheckCircle2 size={13} /> เลือกแล้ว
+              </span>
+            )}
+            <p className="text-xs text-gray-400 sm:ml-auto">ค่านี้เก็บเฉพาะอุปกรณ์นี้ ไม่แชร์กับผู้ใช้อื่น</p>
+          </div>
+
+          {/* Readers list */}
+          <div className="flex justify-end">
+            <button onClick={openNewRfid} className="btn-primary flex items-center gap-2 text-sm">
+              <Plus size={15} /> เพิ่มเครื่องอ่าน RFID
+            </button>
+          </div>
+
+          {rfidReaders.length === 0 ? (
+            <div className="card p-10 text-center text-gray-400 text-sm">ยังไม่มีการตั้งค่าเครื่องอ่าน RFID — กดปุ่มเพิ่มเพื่อเริ่มต้น</div>
+          ) : (
+            <div className="space-y-3">
+              {rfidReaders.map(r => {
+                const area = masterData.areas.find(a => a.id === r.areaId);
+                const isActive = r.id === activeReaderId;
+                return (
+                  <div key={r.id} className={`card p-4 flex flex-col sm:flex-row sm:items-start gap-3 ${isActive ? 'border-primary/30 bg-primary/5' : ''}`}>
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${r.isActive ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+                      <Wifi size={16} className={r.isActive ? 'text-emerald-600' : 'text-gray-400'} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-900 text-sm">{r.name}</span>
+                        {isActive && <span className="text-[10px] bg-primary text-white px-2 py-0.5 rounded-full font-medium">อุปกรณ์นี้</span>}
+                        <span className={`status-badge text-[10px] ${r.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {r.isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                        <div>การเชื่อมต่อ: <span className="font-medium text-gray-700">{CONN_LABELS[r.connectionType]}</span></div>
+                        {area && <div>ติดตั้งที่: {area.name}</div>}
+                        {r.connectionType === 'usb_serial' && r.serialPort && <div>Port: <span className="font-mono">{r.serialPort}</span> · {r.baudRate} bps</div>}
+                        {r.connectionType === 'tcp_ip' && r.ipAddress && <div>IP: <span className="font-mono">{r.ipAddress}:{r.tcpPort}</span></div>}
+                        {r.connectionType === 'bluetooth' && r.bluetoothName && <div>อุปกรณ์: {r.bluetoothName}</div>}
+                        {(r.tagPrefix || r.tagSuffix) && <div>Prefix/Suffix: <span className="font-mono">"{r.tagPrefix}"…"{r.tagSuffix}"</span></div>}
+                        {r.note && <div className="text-gray-400 italic">{r.note}</div>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {!isActive && (
+                        <button onClick={() => setActiveReader(r.id)} className="text-xs text-primary font-medium hover:underline px-2 py-1">
+                          ใช้อุปกรณ์นี้
+                        </button>
+                      )}
+                      <button onClick={() => openEditRfid(r)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><Pencil size={13} /></button>
+                      <button onClick={() => deleteRFIDReader(r.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -552,6 +658,94 @@ export default function Admin() {
           <div className="flex gap-3">
             <button onClick={() => setAreaModal(false)} className="btn-secondary flex-1">ยกเลิก</button>
             <button onClick={saveArea} className="btn-primary flex-1">บันทึก</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── RFID Reader Modal ──────────────────────────────────────────────── */}
+      <Modal open={rfidModal} onClose={() => setRfidModal(false)} title={editRfid ? 'แก้ไขเครื่องอ่าน RFID' : 'เพิ่มเครื่องอ่าน RFID'} size="md">
+        <div className="space-y-4">
+          <div>
+            <label className="form-label">ชื่อเครื่องอ่าน <span className="text-red-500">*</span></label>
+            <input value={rfidForm.name} onChange={e => setRfidForm(f => ({ ...f, name: e.target.value }))} className="form-input" placeholder="เช่น Reader ประตูทางเข้าหลัก" />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">บริเวณที่ติดตั้ง</label>
+              <select value={rfidForm.areaId} onChange={e => setRfidForm(f => ({ ...f, areaId: e.target.value }))} className="form-input">
+                <option value="">— เลือกบริเวณ —</option>
+                {masterData.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">ประเภทการเชื่อมต่อ</label>
+              <select value={rfidForm.connectionType} onChange={e => setRfidForm(f => ({ ...f, connectionType: e.target.value as RFIDConnectionType }))} className="form-input">
+                {(Object.entries(CONN_LABELS) as [RFIDConnectionType, string][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Connection-specific fields */}
+          {rfidForm.connectionType === 'usb_serial' && (
+            <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 rounded-lg">
+              <div>
+                <label className="form-label">COM Port</label>
+                <input value={rfidForm.serialPort} onChange={e => setRfidForm(f => ({ ...f, serialPort: e.target.value }))} className="form-input font-mono" placeholder="COM3 หรือ /dev/ttyUSB0" />
+              </div>
+              <div>
+                <label className="form-label">Baud Rate</label>
+                <select value={rfidForm.baudRate} onChange={e => setRfidForm(f => ({ ...f, baudRate: Number(e.target.value) }))} className="form-input">
+                  {[9600, 19200, 38400, 57600, 115200].map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+          {rfidForm.connectionType === 'tcp_ip' && (
+            <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 rounded-lg">
+              <div>
+                <label className="form-label">IP Address</label>
+                <input value={rfidForm.ipAddress} onChange={e => setRfidForm(f => ({ ...f, ipAddress: e.target.value }))} className="form-input font-mono" placeholder="192.168.1.100" />
+              </div>
+              <div>
+                <label className="form-label">Port</label>
+                <input value={rfidForm.tcpPort} onChange={e => setRfidForm(f => ({ ...f, tcpPort: Number(e.target.value) }))} type="number" className="form-input" min={1} max={65535} />
+              </div>
+            </div>
+          )}
+          {rfidForm.connectionType === 'bluetooth' && (
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <label className="form-label">ชื่ออุปกรณ์ Bluetooth</label>
+              <input value={rfidForm.bluetoothName} onChange={e => setRfidForm(f => ({ ...f, bluetoothName: e.target.value }))} className="form-input" placeholder="เช่น RFID-BT-001" />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Tag Prefix (ตัดออก)</label>
+              <input value={rfidForm.tagPrefix} onChange={e => setRfidForm(f => ({ ...f, tagPrefix: e.target.value }))} className="form-input font-mono" placeholder="เช่น RFID-" />
+            </div>
+            <div>
+              <label className="form-label">Tag Suffix (ตัดออก)</label>
+              <input value={rfidForm.tagSuffix} onChange={e => setRfidForm(f => ({ ...f, tagSuffix: e.target.value }))} className="form-input font-mono" placeholder="เช่น -END" />
+            </div>
+          </div>
+
+          <div>
+            <label className="form-label">หมายเหตุ</label>
+            <input value={rfidForm.note} onChange={e => setRfidForm(f => ({ ...f, note: e.target.value }))} className="form-input" placeholder="รายละเอียดเพิ่มเติม..." />
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer text-sm">
+            <input type="checkbox" checked={rfidForm.isActive} onChange={e => setRfidForm(f => ({ ...f, isActive: e.target.checked }))} className="accent-primary w-4 h-4" />
+            เปิดใช้งานเครื่องอ่านนี้
+          </label>
+
+          <div className="flex gap-3 pt-2">
+            <button onClick={() => setRfidModal(false)} className="btn-secondary flex-1">ยกเลิก</button>
+            <button onClick={saveRfid} disabled={!rfidForm.name.trim()} className="btn-primary flex-1">บันทึก</button>
           </div>
         </div>
       </Modal>

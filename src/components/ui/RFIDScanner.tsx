@@ -11,9 +11,10 @@ interface RFIDScannerProps {
   onOpen?: boolean;
   onClose?: () => void;
   compact?: boolean;
+  activeReaderName?: string;
 }
 
-export default function RFIDScanner({ onOpen = false, onClose, compact = false }: RFIDScannerProps) {
+export default function RFIDScanner({ onOpen = false, onClose, compact = false, activeReaderName }: RFIDScannerProps) {
   const [isOpen, setIsOpen] = useState(onOpen);
   const [rfidInput, setRfidInput] = useState('');
   const [scannedItem, setScannedItem] = useState<FoundReport | null>(null);
@@ -128,12 +129,15 @@ export default function RFIDScanner({ onOpen = false, onClose, compact = false }
           ? 'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-primary-dark transition-colors'
           : 'btn-primary flex items-center gap-2 text-sm'
         }
-        title="สแกน RFID"
+        title={activeReaderName ? `สแกน RFID — ${activeReaderName}` : 'สแกน RFID'}
       >
-        <Wifi size={16} /> <span className={compact ? 'hidden md:inline' : ''}>สแกน RFID</span>
+        <Wifi size={16} />
+        <span className={compact ? 'hidden md:inline' : ''}>
+          {activeReaderName ? activeReaderName : 'สแกน RFID'}
+        </span>
       </button>
 
-      <Modal open={isOpen} onClose={handleClose} title="สแกน RFID Tag" size="lg">
+      <Modal open={isOpen} onClose={handleClose} title={activeReaderName ? `สแกน RFID — ${activeReaderName}` : 'สแกน RFID Tag'} size="lg">
         <div className="space-y-4">
           {/* Scan Input */}
           <div>

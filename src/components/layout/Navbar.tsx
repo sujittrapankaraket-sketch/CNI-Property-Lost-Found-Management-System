@@ -2,6 +2,7 @@ import { Menu, Bell, ChevronRight, CloudOff, Cloud } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import RFIDScanner from '../ui/RFIDScanner';
 import { canUseRemoteDataStore } from '../../services/dataStore';
+import { useData } from '../../context/DataContext';
 
 interface NavbarProps {
   onMenuClick: () => void;
@@ -24,6 +25,8 @@ const ROUTE_LABELS: Record<string, string> = {
 
 export default function Navbar({ onMenuClick }: NavbarProps) {
   const location = useLocation();
+  const { rfidReaders, activeReaderId } = useData();
+  const activeReader = rfidReaders.find(r => r.id === activeReaderId);
   const parts = location.pathname.split('/').filter(Boolean);
   const crumbs = [{ path: '/', label: 'หน้าหลัก' }];
   parts.forEach((_, i) => {
@@ -74,7 +77,7 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
             : <><CloudOff size={10} /> Local only</>
           }
         </div>
-        <RFIDScanner compact />
+        <RFIDScanner compact activeReaderName={activeReader?.name} />
         <button className="relative p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <Bell size={18} />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full"></span>

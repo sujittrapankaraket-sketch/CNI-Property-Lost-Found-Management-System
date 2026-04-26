@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { addDays, format } from 'date-fns';
 import type {
   LostReport, FoundReport, MasterData, PropertyCategory, Area,
-  StorageLocation, AuditLog, Toast
+  StorageLocation, AuditLog, Toast, RFIDReaderConfig
 } from '../types';
 import {
   canUseRemoteDataStore,
@@ -163,6 +163,8 @@ interface DataContextType {
   auditLogs: AuditLog[];
   toasts: Toast[];
   remoteLoaded: boolean;
+  rfidReaders: RFIDReaderConfig[];
+  activeReaderId: string;
   addLostReport: (r: Omit<LostReport, 'id' | 'trackingNo' | 'createdAt'>) => LostReport;
   addFoundReport: (r: Omit<FoundReport, 'id' | 'foundCode' | 'createdAt'>) => { report: FoundReport; matches: LostReport[] };
   updateLostReport: (id: string, updates: Partial<LostReport>) => void;
@@ -177,6 +179,10 @@ interface DataContextType {
   addStorageLocation: (s: StorageLocation) => void;
   updateStorageLocation: (s: StorageLocation) => void;
   deleteStorageLocation: (id: string) => void;
+  addRFIDReader: (r: RFIDReaderConfig) => void;
+  updateRFIDReader: (r: RFIDReaderConfig) => void;
+  deleteRFIDReader: (id: string) => void;
+  setActiveReader: (id: string) => void;
   addToast: (t: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
   addAuditLog: (log: Omit<AuditLog, 'id'>) => void;
@@ -230,6 +236,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     canUseRemoteDataStore ? [] : readStoredState(STORAGE_KEYS.auditLogs, MOCK_AUDIT)
   );
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [rfidReaders, setRfidReaders] = useState<RFIDReaderConfig[]>(() =>
+    readStoredState('cni_rfid_readers', [] as RFIDReaderConfig[])
+  );
+  const [activeReaderId, setActiveReaderId] = useState<string>(() =>
+    readStoredState('cni_active_reader', '')
+  );
   // remoteLoaded: false = กำลังโหลดจาก Supabase, true = พร้อมใช้งาน
   const [remoteLoaded, setRemoteLoaded] = useState(!canUseRemoteDataStore);
 
@@ -298,6 +310,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (remoteLoaded) writeStoredState(STORAGE_KEYS.auditLogs, auditLogs);
   }, [auditLogs, remoteLoaded]);
+
+  // RFID reader configs are always device-local (localStorage only)
+  useEffect(() => { writeStoredState('cni_rfid_readers', rfidReaders); }, [rfidReaders]);
+  useEffect(() => { writeStoredState('cni_active_reader', activeReaderId); }, [activeReaderId]);
+
+  const addRFIDReader = (r: RFIDReaderConfig) => setRfidReaders(prev => [...prev, r]);
+  const updateRFIDReader = (r: RFIDReaderConfig) => setRfidReaders(prev => prev.map(x => x.id === r.id ? r : x));
+  const deleteRFIDReader = (id: string) => {
+    setRfidReaders(prev => prev.filter(x => x.id !== id));
+    if (activeReaderId === id) setActiveReaderId('');
+  };
+  const setActiveReader = (id: string) => setActiveReaderId(id);
 
   const addToast = (t: Omit<Toast, 'id'>) => {
     const id = Date.now().toString();
@@ -426,6 +450,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       auditLogs,
       toasts,
       remoteLoaded,
+      rfidReaders,
+      activeReaderId,
       addLostReport,
       addFoundReport,
       updateLostReport,
@@ -440,6 +466,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       addStorageLocation,
       updateStorageLocation,
       deleteStorageLocation: deleteStorageLoc,
+      addRFIDReader,
+      updateRFIDReader,
+      deleteRFIDReader,
+      setActiveReader,
       addToast,
       removeToast,
       addAuditLog,

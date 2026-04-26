@@ -135,3 +135,26 @@ export interface Toast {
   title: string;
   message?: string;
 }
+
+export type RFIDConnectionType = 'keyboard' | 'usb_serial' | 'tcp_ip' | 'bluetooth';
+
+export interface RFIDReaderConfig {
+  id: string;
+  name: string;           // ชื่อเครื่องอ่าน
+  areaId: string;         // บริเวณที่ติดตั้ง
+  connectionType: RFIDConnectionType;
+  // USB Serial
+  serialPort?: string;    // COM3, /dev/ttyUSB0
+  baudRate?: number;      // 9600, 115200
+  // TCP/IP
+  ipAddress?: string;
+  tcpPort?: number;
+  // Bluetooth
+  bluetoothName?: string;
+  // Tag format
+  tagPrefix?: string;     // prefix to strip from raw scan
+  tagSuffix?: string;     // suffix to strip from raw scan
+  isActive: boolean;
+  note?: string;
+  createdAt: string;
+}
