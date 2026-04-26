@@ -89,10 +89,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+function safeLocalGet(key: string) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeLocalSet(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch { /* ignore */ }
+}
+function safeLocalRemove(key: string) {
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem('cni_user');
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = safeLocalGet('cni_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
   });
   const [users, setUsers] = useState<(User & { password: string })[]>(MOCK_USERS);
   const [groups, setGroups] = useState<UserGroup[]>(MOCK_GROUPS);
@@ -137,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     setUser(null);
-    localStorage.removeItem('cni_user');
+    safeLocalRemove('cni_user');
     window.location.href = '/login';
   }, []);
 
@@ -165,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (found) {
       const { password: _pw, ...userObj } = found;
       setUser(userObj);
-      localStorage.setItem('cni_user', JSON.stringify(userObj));
+      safeLocalSet('cni_user', JSON.stringify(userObj));
       return true;
     }
     return false;
@@ -186,7 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }));
     if (user?.id === updated.id) {
       setUser(updated);
-      localStorage.setItem('cni_user', JSON.stringify(updated));
+      safeLocalSet('cni_user', JSON.stringify(updated));
     }
   };
 

@@ -8,9 +8,9 @@ import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
 import ToastContainer from './components/shared/ToastContainer';
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  state = { hasError: false };
-  static getDerivedStateFromError() { return { hasError: true }; }
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; message: string }> {
+  state = { hasError: false, message: '' };
+  static getDerivedStateFromError(e: Error) { return { hasError: true, message: e.message }; }
   render() {
     if (this.state.hasError) {
       return (
@@ -18,6 +18,9 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
           <div className="text-4xl">⚠️</div>
           <h2 className="text-lg font-bold text-gray-900">เกิดข้อผิดพลาด</h2>
           <p className="text-sm text-gray-500 max-w-sm">กรุณารีเฟรชหน้าเว็บ หากยังพบปัญหา กรุณาติดต่อผู้ดูแลระบบ</p>
+          {this.state.message && (
+            <code className="text-xs bg-gray-100 px-3 py-1.5 rounded text-gray-600 max-w-xs break-all">{this.state.message}</code>
+          )}
           <button onClick={() => window.location.reload()} className="btn-primary text-sm">รีเฟรชหน้าเว็บ</button>
         </div>
       );
