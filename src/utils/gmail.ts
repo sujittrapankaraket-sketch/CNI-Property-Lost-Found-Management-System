@@ -24,14 +24,14 @@ interface FoundIntakeEmailContext {
 }
 
 export function buildGmailComposeUrl({ to, subject, body }: EmailDraft) {
-  const params = new URLSearchParams({ view: 'cm', fs: '1', to, su: subject, body });
-  return `https://mail.google.com/mail/?${params.toString()}`;
+  // Use encodeURIComponent (%20 for spaces) — URLSearchParams uses + which Gmail may not decode correctly
+  return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 // mailto: เปิด Gmail App / email app ที่ผูก Google account บนเครื่อง (iOS / Android / Desktop)
+// RFC 2368 requires percent-encoding (not +) for mailto: body
 export function buildMailtoUrl({ to, subject, body }: EmailDraft): string {
-  const params = new URLSearchParams({ subject, body });
-  return `mailto:${encodeURIComponent(to)}?${params.toString()}`;
+  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 // เปิด Gmail Web ใน tab ใหม่ (desktop-friendly)
@@ -58,6 +58,7 @@ export function buildClaimResponseUrl(foundId: string, lostId: string) {
 
 export function buildLostReporterMatchEmail({ found, lost, category, area, appointment, claimUrl }: MatchedEmailContext): EmailDraft {
   const subject = `พบทรัพย์สินที่อาจเป็นของคุณ - ${lost.trackingNo}`;
+  const url = claimUrl ?? buildClaimResponseUrl(found.id, lost.id);
   const body = [
     `เรียนคุณ ${lost.reporter.name}`,
     '',
@@ -72,8 +73,13 @@ export function buildLostReporterMatchEmail({ found, lost, category, area, appoi
     `สถานที่พบ: ${area?.name ?? found.foundAreaId}`,
     appointment ? `วัน/เวลานัดคืน: ${appointment}` : 'วัน/เวลานัดคืน: กรุณารอเจ้าหน้าที่นัดหมาย',
     '',
-    'กรุณาเปิดลิงก์ด้านล่างเพื่อดูข้อมูลทรัพย์สินที่พบ เลือกวันนัดรับคืน หรือปฏิเสธหากไม่ใช่ทรัพย์สินของคุณ',
-    claimUrl ?? buildClaimResponseUrl(found.id, lost.id),
+    '------------------------------------------------------------',
+    'กรุณาคลิกลิงก์ด้านล่างเพื่อดูข้อมูลและยืนยันนัดรับทรัพย์สิน:',
+    '',
+    url,
+    '',
+    '(หากลิงก์ไม่สามารถคลิกได้ กรุณาคัดลอกลิงก์ข้างต้นไปวางในเบราว์เซอร์)',
+    '------------------------------------------------------------',
     '',
     'ขอบคุณ',
     'ClickNext Innovation Lost & Found',
