@@ -158,6 +158,7 @@ interface DataContextType {
   masterData: MasterData;
   auditLogs: AuditLog[];
   toasts: Toast[];
+  remoteLoaded: boolean;
   addLostReport: (r: Omit<LostReport, 'id' | 'trackingNo' | 'createdAt'>) => LostReport;
   addFoundReport: (r: Omit<FoundReport, 'id' | 'foundCode' | 'createdAt'>) => { report: FoundReport; matches: LostReport[] };
   updateLostReport: (id: string, updates: Partial<LostReport>) => void;
@@ -179,8 +180,8 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | null>(null);
 
-let lostCounter = 5;
-let foundCounter = 5;
+let lostCounter = 1;
+let foundCounter = 1;
 
 function genLostNo() {
   const d = format(new Date(), 'yyyyMMdd');
@@ -190,6 +191,14 @@ function genLostNo() {
 function genFoundCode() {
   const d = format(new Date(), 'yyyyMMdd');
   return `FND-${d}-${String(foundCounter++).padStart(4, '0')}`;
+}
+
+function initCounters(lost: LostReport[], found: FoundReport[]) {
+  const today = format(new Date(), 'yyyyMMdd');
+  const todayLost = lost.filter(r => r.trackingNo?.includes(today));
+  const todayFound = found.filter(r => r.foundCode?.includes(today));
+  if (todayLost.length >= lostCounter) lostCounter = todayLost.length + 1;
+  if (todayFound.length >= foundCounter) foundCounter = todayFound.length + 1;
 }
 
 function findMatches(newFound: FoundReport, lostList: LostReport[]): LostReport[] {
@@ -202,13 +211,23 @@ function findMatches(newFound: FoundReport, lostList: LostReport[]): LostReport[
 }
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [lostReports, setLostReports] = useState<LostReport[]>(() => readStoredState(STORAGE_KEYS.lostReports, MOCK_LOST));
-  const [foundReports, setFoundReports] = useState<FoundReport[]>(() => readStoredState(STORAGE_KEYS.foundReports, MOCK_FOUND));
+  // เมื่อ Supabase configured → เริ่มด้วย [] แล้วโหลดจาก remote เป็น source of truth
+  // เมื่อไม่มี Supabase → ใช้ localStorage / MOCK data ตามปกติ
+  const [lostReports, setLostReports] = useState<LostReport[]>(() =>
+    canUseRemoteDataStore ? [] : readStoredState(STORAGE_KEYS.lostReports, MOCK_LOST)
+  );
+  const [foundReports, setFoundReports] = useState<FoundReport[]>(() =>
+    canUseRemoteDataStore ? [] : readStoredState(STORAGE_KEYS.foundReports, MOCK_FOUND)
+  );
   const [categories, setCategories] = useState<PropertyCategory[]>(CATEGORIES);
   const [areas, setAreas] = useState<Area[]>(AREAS);
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>(STORAGE_LOCATIONS);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => readStoredState(STORAGE_KEYS.auditLogs, MOCK_AUDIT));
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() =>
+    canUseRemoteDataStore ? [] : readStoredState(STORAGE_KEYS.auditLogs, MOCK_AUDIT)
+  );
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // remoteLoaded: false = กำลังโหลดจาก Supabase, true = พร้อมใช้งาน
+  const [remoteLoaded, setRemoteLoaded] = useState(!canUseRemoteDataStore);
 
   useEffect(() => {
     if (!canUseRemoteDataStore) return;
@@ -216,22 +235,41 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     loadRemoteAppState()
       .then(state => {
-        if (!state || cancelled) return;
+        if (cancelled) return;
+        if (!state) {
+          // Supabase configured แต่ return null → ใช้ localStorage แทน
+          setLostReports(readStoredState(STORAGE_KEYS.lostReports, MOCK_LOST));
+          setFoundReports(readStoredState(STORAGE_KEYS.foundReports, MOCK_FOUND));
+          setAuditLogs(readStoredState(STORAGE_KEYS.auditLogs, MOCK_AUDIT));
+          setRemoteLoaded(true);
+          return;
+        }
         setLostReports(state.lostReports);
         setFoundReports(state.foundReports);
         setAuditLogs(state.auditLogs);
-        if (state.categories) setCategories(state.categories);
-        if (state.areas) setAreas(state.areas);
-        if (state.storageLocations) setStorageLocations(state.storageLocations);
+        if (state.categories?.length) setCategories(state.categories);
+        if (state.areas?.length) setAreas(state.areas);
+        if (state.storageLocations?.length) setStorageLocations(state.storageLocations);
+        initCounters(state.lostReports, state.foundReports);
+        if (!cancelled) setRemoteLoaded(true);
       })
       .catch(error => {
         console.error('Failed to load Supabase state', error);
         if (!cancelled) {
-          addToast({
-            type: 'warning',
+          // Fallback to localStorage / MOCK
+          setLostReports(readStoredState(STORAGE_KEYS.lostReports, MOCK_LOST));
+          setFoundReports(readStoredState(STORAGE_KEYS.foundReports, MOCK_FOUND));
+          setAuditLogs(readStoredState(STORAGE_KEYS.auditLogs, MOCK_AUDIT));
+          setRemoteLoaded(true);
+          // toast จะ call ผ่าน setToasts โดยตรงเพราะ addToast ยังไม่ stable ตรงนี้
+          const id = Date.now().toString();
+          setToasts(prev => [...prev, {
+            id,
+            type: 'error',
             title: 'เชื่อมต่อ Supabase ไม่สำเร็จ',
-            message: 'ระบบใช้ข้อมูลในเครื่องชั่วคราว',
-          });
+            message: 'ข้อมูลอาจไม่ sync — ตรวจสอบ SUPABASE_URL / KEY',
+          }]);
+          setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 6000);
         }
       });
 
@@ -240,17 +278,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // localStorage เป็น cache สำหรับ offline / local-only mode
+  // เมื่อใช้ Supabase ก็ยังเขียน localStorage ไว้เป็น fast-cache ระหว่าง reload
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.lostReports, JSON.stringify(lostReports));
-  }, [lostReports]);
+    if (remoteLoaded) localStorage.setItem(STORAGE_KEYS.lostReports, JSON.stringify(lostReports));
+  }, [lostReports, remoteLoaded]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.foundReports, JSON.stringify(foundReports));
-  }, [foundReports]);
+    if (remoteLoaded) localStorage.setItem(STORAGE_KEYS.foundReports, JSON.stringify(foundReports));
+  }, [foundReports, remoteLoaded]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.auditLogs, JSON.stringify(auditLogs));
-  }, [auditLogs]);
+    if (remoteLoaded) localStorage.setItem(STORAGE_KEYS.auditLogs, JSON.stringify(auditLogs));
+  }, [auditLogs, remoteLoaded]);
 
   const addToast = (t: Omit<Toast, 'id'>) => {
     const id = Date.now().toString();
@@ -378,6 +418,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       masterData: { categories, areas, storageLocations },
       auditLogs,
       toasts,
+      remoteLoaded,
       addLostReport,
       addFoundReport,
       updateLostReport,

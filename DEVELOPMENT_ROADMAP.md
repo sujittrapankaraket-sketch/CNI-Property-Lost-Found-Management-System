@@ -4,214 +4,133 @@
 
 - [x] Authentication & Authorization (Role-based access)
 - [x] Lost Report Form (Multi-step with validation)
-- [x] Found Report Form (Multi-step with validation)
+- [x] Found Report Form (Multi-step with validation, email+phone required)
 - [x] Lost Report List & Management
 - [x] Found Report List & Management
-- [x] Search & Match System (Auto-matching algorithm)
+- [x] Search & Match System (Auto-matching + RFID search)
+- [x] **Search date range filter** (date-from / date-to บน dual panel)
 - [x] Property Management Dashboard
-- [x] Reports & Analytics with Charts
-- [x] Admin Panel (User Management, Master Data, Audit Logs, Settings)
+- [x] Reports & Analytics — รายวัน/รายเดือน/รายปี + Date range filter
+- [x] Admin Panel (User, **Groups**, Master Data, Audit Logs, Settings)
+- [x] **User Groups CRUD + Group Permissions** (TOR 4.9.1.2, 4.9.1.3)
+- [x] **Audit Log date range filter** (auditDateFrom / auditDateTo)
 - [x] Toast Notifications System
-- [x] Session Timeout Management
-- [x] Audit Logging
+- [x] Session Timeout Management (configurable)
+- [x] Audit Logging (full Supabase sync)
+- [x] Supabase backend integration (all modules)
+- [x] Handover Form (dual signature — Finder + Recipient)
+- [x] ClaimResponse public page (ไม่ต้อง login)
+- [x] Validation utility library (`src/utils/validations.ts`)
 
 ---
 
-## 🔧 Recent Updates (Phase 1)
+## 🔧 Recent Updates (Phase 1–2 completed)
 
-### Email Validation Enhancement
-- ✅ Made email field **REQUIRED** for Lost Report
-- ✅ Added email format validation (regex pattern)
-- ✅ Added Thai error messages
-- ✅ Updated validation step to include email
+### Email & Validation
+- ✅ Email field **REQUIRED** บน Lost Report + Found Report
+- ✅ Phone field **REQUIRED** (Thai format: 0XX-XXX-XXXX) บน Found Report
+- ✅ Validation utility: `src/utils/validations.ts`
 
----
+### Reports Enhancement
+- ✅ Period selector: รายวัน / รายเดือน / รายปี
+- ✅ Date range filter บนทุก tab รวมถึง User Activity
 
-## 🚀 Priority Development Tasks (Phase 2)
+### Admin Enhancement
+- ✅ Groups tab: CRUD กลุ่มผู้ใช้ + assign permissions (TOR 4.9.1.2–4.9.1.3)
+- ✅ Audit Log date range filter (calendar inputs)
 
-### High Priority (Critical)
-
-#### 1. Found Report - Make Email Required
-- [ ] Add email field to Found Report Form
-- [ ] Add email validation similar to Lost Report
-- [ ] Update finder email in mock data
-- [ ] Add email validation in Step fields
-
-**File to modify:** `src/pages/FoundReport/FoundReportForm.tsx`
+### Search Enhancement
+- ✅ Date range filter บน SearchMatch page
 
 ---
 
-#### 2. Email Validation Consistency
-- [ ] Create reusable email validation regex
-- [ ] Add phone number validation (Thai format: 0XX-XXX-XXXX)
-- [ ] Create validation utility file: `src/utils/validations.ts`
+## 🚀 Priority Development Tasks (Phase 2 — อัปเดต 2026-04-26)
 
-**Suggested utilities:**
-```typescript
-export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export const PHONE_REGEX = /^0\d{1,2}-\d{3,4}-\d{4}$/;
-export const validateEmail = (email: string): boolean => EMAIL_REGEX.test(email);
-export const validatePhone = (phone: string): boolean => PHONE_REGEX.test(phone);
-```
+### High Priority (Critical — TOR Gap)
 
----
+#### 1. PDF Export ใบส่งมอบ (TOR 4.5.7) 🔴
+- [ ] Generate handover receipt PDF จาก HandoverForm
+- [ ] ใส่ลายเซ็นทั้ง 2 ฝ่าย + ข้อมูลครบ
+- [ ] ปุ่ม "พิมพ์" / "บันทึก PDF"
 
-#### 3. Email Notifications (Backend Integration Ready)
-- [ ] Create email notification templates:
-  - Report confirmation email
-  - Matching notification email
-  - Return appointment reminder
-  - Item expiration warning
-- [ ] Add email service configuration
-- [ ] Add email queue system
-
-**Suggested structure:**
-- `src/services/emailService.ts` - Email sending logic
-- `src/templates/emails/` - Email templates
-- Update `DataContext.tsx` to trigger email events
+**Recommended packages:** `jspdf`, `html2canvas`  
+**File to modify:** `src/pages/FoundReport/HandoverForm.tsx`
 
 ---
 
-#### 4. Data Export Features
-- [ ] Export Lost Reports to Excel
-- [ ] Export Found Reports to Excel
-- [ ] Export Reports to PDF with charts
-- [ ] Export Audit Logs
-- [ ] Email export option
+#### 2. Email ส่งจริงอัตโนมัติ (TOR 4.5.7-8) 🔴
+- [ ] Supabase Edge Function สำหรับส่งอีเมล
+- [ ] Template: แจ้งพบของตรงกัน + link ClaimResponse
+- [ ] Template: ยืนยันรับของคืน + แนบ PDF ใบส่งมอบ
+- [ ] ส่งอัตโนมัติเมื่อ match / return
 
-**Recommended packages:**
-- `xlsx` - Excel export
-- `jspdf` - PDF generation
-- `html2canvas` - Chart to image conversion
+**Note:** Gmail mailto ทำงานอยู่แล้ว (`src/utils/gmail.ts`) แต่ต้องการ SMTP จริง
 
 ---
 
-#### 5. Advanced Filtering & Search
-- [ ] Add advanced filter UI to Lost Report List
-- [ ] Add advanced filter UI to Found Report List
-- [ ] Filter by date range, category, area, status
-- [ ] Filter by reporter info (name, phone, email)
-- [ ] Save filter preferences
-- [ ] Quick search across all fields
+### Medium Priority (TOR & UX)
+
+#### 3. Mobile Responsiveness (TOR 4.3) 🟡
+- [ ] Test + optimize ทุก page บน mobile
+- [ ] Touch-friendly form inputs (multi-step forms)
+- [ ] Responsive tables → card layout บน mobile
 
 ---
 
-#### 6. Handover Process Improvements
-- [ ] Create handover receipt PDF generation
-- [ ] Add handover signature capture
-- [ ] Send handover confirmation email
-- [ ] Track handover history
-- [ ] QR code generation for tracking
+#### 4. Password Hashing (Security) 🟡
+- [ ] Hash password ด้วย bcrypt ก่อนบันทึก Supabase
+- [ ] Verify hash เมื่อ login
 
----
-
-### Medium Priority (Important)
-
-#### 7. Item Photos & Attachments
-- [ ] Implement image compression
-- [ ] Add image preview gallery
-- [ ] Support multiple image formats (JPG, PNG, WebP)
-- [ ] Add watermark/timestamp to photos
-- [ ] Cloud storage integration (S3, Azure Blob, etc.)
-
----
-
-#### 8. RFID Integration
-- [ ] Create RFID reader connection module
-- [ ] Auto-populate RFID tag on reader scan
-- [ ] Add RFID validation
-- [ ] Track RFID scanner events in audit log
-- [ ] Generate RFID tags for new found items
-
----
-
-#### 9. Mobile Responsiveness Improvements
-- [ ] Test and optimize for mobile devices
-- [ ] Add touch-friendly form inputs
-- [ ] Improve mobile navigation
-- [ ] Add mobile-specific search interface
-
----
-
-#### 10. Performance Optimizations
-- [ ] Add pagination to report lists (currently showing all)
-- [ ] Implement lazy loading for images
-- [ ] Add search indexing for faster lookups
-- [ ] Cache master data locally
-- [ ] Add loading states and skeletons
+**Note:** ปัจจุบัน plaintext ใน Supabase
 
 ---
 
 ### Low Priority (Nice to Have)
 
-#### 11. Dashboard Analytics Enhancements
-- [ ] Add item recovery rate chart
-- [ ] Add time-to-match analytics
-- [ ] Add reporter success rate
-- [ ] Add geographic heat map
-- [ ] Export analytics to PDF
+#### 5. Excel Export รายงาน 🟢
+- [ ] Export Lost/Found Reports → Excel
+- [ ] Export Audit Logs → Excel
+
+**Recommended package:** `xlsx`
 
 ---
 
-#### 12. Multi-Language Support
-- [ ] Create i18n (internationalization) setup
-- [ ] Add English language support
-- [ ] Add Chinese language support
-- [ ] Make language switchable in UI
-
-**Recommended package:** `i18next`
+#### 6. RFID Hardware Integration 🟢
+- [ ] เชื่อมต่อ RFID reader จริง (Web Serial API หรือ WebSocket)
+- [ ] Auto-populate rfidTag เมื่อ scan
+- [ ] ปัจจุบัน: simulation เท่านั้น (`src/components/ui/RFIDScanner.tsx`)
 
 ---
 
-#### 13. Barcode/QR Code System
-- [ ] Generate unique barcodes for items
-- [ ] Print item labels with QR codes
-- [ ] Add barcode scanner support
-- [ ] Barcode scanning for report lookup
-
-**Recommended package:** `jsbarcode`, `qrcode.react`
+#### 7. Performance & UX 🟢
+- [ ] Pagination บน report lists
+- [ ] Lazy loading รูปภาพ
+- [ ] Loading skeleton states
 
 ---
 
-#### 14. SMS Notifications
-- [ ] Send matching notification via SMS
-- [ ] Send appointment reminders via SMS
-- [ ] Send report confirmation SMS
-- [ ] Carrier integration (Twilio, etc.)
-
----
-
-#### 15. Dark Mode Support
-- [ ] Add dark mode toggle
-- [ ] Store theme preference
-- [ ] Update Tailwind config for dark mode
-- [ ] Test all pages in dark mode
-
----
-
-## 📊 Phase 2 Priority Matrix
+## 📊 Phase 2 Priority Matrix (อัปเดต 2026-04-26)
 
 ```
           │ Impact
           │  High
 ──────────┼──────────────────────
-Effort:   │  Email Req  │ Export
-Low       │  Validation │ Features
+Effort:   │  PDF Export │ Email
+Low–Med   │  ใบส่งมอบ  │ SMTP จริง
           │             │
 ──────────┼──────────────────────
-          │ RFID Int.   │ Mobile
-High      │ Photo Mgmt  │ Optimize
+          │ RFID HW     │ Mobile
+High      │ Integration │ Optimize
           │             │
 ```
 
 **Suggested Order of Implementation:**
-1. Email validation (quick win)
-2. Found Report email requirement
-3. Advanced filtering & search
-4. Data export features
-5. Email notifications integration
-6. RFID integration
-7. Photo management improvements
+1. PDF Export ใบส่งมอบ (TOR critical gap)
+2. Email ส่งจริง via Supabase Edge Function
+3. Mobile responsive improvement
+4. Password hashing (security)
+5. Excel export รายงาน
+6. RFID hardware integration
 
 ---
 

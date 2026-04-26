@@ -16,9 +16,9 @@
 
 ```mermaid
 pie title สถานะ Feature ตาม TOR (จำนวนข้อกำหนด)
-    "✅ Implemented" : 28
-    "⚠️ Partial" : 7
-    "❌ Not Yet" : 6
+    "✅ Implemented" : 35
+    "⚠️ Partial" : 3
+    "❌ Not Yet" : 3
 ```
 
 ---
@@ -213,7 +213,7 @@ flowchart TD
         F1["🔍 Keyword search"]
         F2["📦 หมวดหมู่"]
         F3["📍 บริเวณ"]
-        F4["📅 วันที่ ❌\n(ยังไม่มีกรอง date range)"]
+        F4["📅 วันที่ ✅\n(date-from / date-to)"]
     end
 
     FILTER --> PANELS
@@ -237,7 +237,7 @@ flowchart TD
 
     style SCORE fill:#3B82F6,color:#fff
     style MATCH fill:#10B981,color:#fff
-    style F4 fill:#EF4444,color:#fff
+    style F4 fill:#10B981,color:#fff
 ```
 
 | ข้อ TOR | ข้อกำหนด | สถานะ | หมายเหตุ |
@@ -245,7 +245,7 @@ flowchart TD
 | 4.6.1 | ค้นหาจากประเภทของทรัพย์สิน | ✅ | |
 | 4.6.1 | ค้นหาจากบริเวณที่พบ | ✅ | |
 | 4.6.1 | ค้นหาจากรายละเอียดทรัพย์สิน | ✅ | keyword search |
-| 4.6.1 | ค้นหาจากวันที่/ช่วงเวลาที่พบ | ❌ | ยังไม่มี date range filter |
+| 4.6.1 | ค้นหาจากวันที่/ช่วงเวลาที่พบ | ✅ | date-from / date-to filter บน dual panel |
 | 4.6.2 | แสดงรายละเอียดที่เกี่ยวข้อง | ✅ | dual panel + scoring |
 
 ---
@@ -365,22 +365,26 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    DATA["lostReports + foundReports + auditLogs\n(จาก DataContext)"] --> CALC
+    DATA["lostReports + foundReports + auditLogs\n(จาก DataContext)"] --> FILTER
 
-    CALC["useMemo คำนวณ stats\n6 เดือนย้อนหลัง ⚠️\n(ยังไม่มี รายวัน/รายปี)"]
+    FILTER["📅 Date Range Filter ✅\nrangeFrom / rangeTo\n(กรองได้ทุก tab)"]
+    FILTER --> PERIOD
+
+    PERIOD["🗓️ Period Selector ✅\nรายวัน / รายเดือน / รายปี"]
+    PERIOD --> CALC
+
+    CALC["useMemo คำนวณ stats\nตาม period + date range ✅"]
 
     subgraph TABS["4 Tabs"]
-        T1["📊 ภาพรวม ✅\nBar Chart: lost/found/returned\nต่อเดือน (6 เดือน)"]
+        T1["📊 ภาพรวม ✅\nBar Chart: lost/found/matched/returned\n(รายวัน/เดือน/ปี เลือกได้)"]
         T2["📦 ของพบ ✅\n6 summary cards\nReturn rate %\nPie chart ประเภท/บริเวณ ✅"]
-        T3["📋 แจ้งหาย ✅\nStatus distribution\nCategory breakdown ✅\nArea breakdown ✅"]
-        T4["👥 User Activity ✅\nรายงานต่อเจ้าหน้าที่\nAudit action counts"]
+        T3["📋 แจ้งหาย ✅\nStatus distribution\nCategory/Area breakdown ✅"]
+        T4["👥 User Activity ✅\nรายงานต่อเจ้าหน้าที่\nAudit action counts + date filter ✅"]
     end
 
     CALC --> T1 & T2 & T3 & T4
 
     subgraph MISSING["❌ ยังขาด"]
-        M1["กรองรายวัน / รายปี"]
-        M2["Date range filter"]
         M3["Export Excel / PDF"]
     end
 ```
@@ -388,13 +392,13 @@ flowchart TD
 | ข้อ TOR | ข้อกำหนด | สถานะ | หมายเหตุ |
 |---------|----------|-------|---------|
 | 4.8.1 | สถิติแจ้งหาย รายเดือน | ✅ | 6 เดือนย้อนหลัง |
-| 4.8.1 | สถิติแจ้งหาย รายวัน/รายปี | ❌ | |
+| 4.8.1 | สถิติแจ้งหาย รายวัน/รายปี | ✅ | period selector + date range |
 | 4.8.1 | แยกตามประเภท/บริเวณ | ✅ | |
 | 4.8.2 | สถิตินำส่ง รายเดือน | ✅ | |
-| 4.8.2 | สถิตินำส่ง รายวัน/รายปี | ❌ | |
+| 4.8.2 | สถิตินำส่ง รายวัน/รายปี | ✅ | period selector + date range |
 | 4.8.2 | แยกตามประเภท/บริเวณ | ✅ | |
 | 4.8.3 | รายงานการปฏิบัติงาน (username) | ✅ | User Activity tab |
-| 4.8.3 | กรองจากช่วงเวลา | ❌ | ดูเฉพาะ 6 เดือนล่าสุด |
+| 4.8.3 | กรองจากช่วงเวลา | ✅ | date-from / date-to filter |
 | 4.8.3 | แสดงรับแจ้ง/นำส่ง/ส่งมอบ | ✅ | |
 
 ---
@@ -422,14 +426,16 @@ flowchart TD
     ADMIN(["/admin — Admin role เท่านั้น"]) --> TABS
 
     subgraph TABS["Admin Tabs"]
-        U["👥 Users\nCRUD: สร้าง/แก้ไข/ลบ ✅\nกำหนด role ✅\nกำหนด permissions รายบุคคล ✅"]
+        U["👥 Users\nCRUD: สร้าง/แก้ไข/ลบ ✅\nกำหนด role ✅\nกำหนด permissions รายบุคคล ✅\nเลือก group → auto-apply perms ✅"]
+        GRP["🏢 Groups ✅ (TOR 4.9.1.2, 4.9.1.3)\nCRUD กลุ่มผู้ใช้\nกำหนด permissions รายกลุ่ม ✅"]
         M["🗂️ Master Data ✅\nประเภท / บริเวณ / Storage"]
-        AL["📋 Audit Logs ✅\nกรอง action/user\nDate range ❌"]
+        AL["📋 Audit Logs ✅\nกรอง action/user\nDate range ✅"]
         S["⚙️ Settings ✅\nOrganization name\nSession timeout (นาที)"]
     end
 
     U -->|"save"| SU["upsertUser() → Supabase ✅"]
     U -->|"delete"| DU["deleteUserRecord() → Supabase ✅"]
+    GRP -->|"save"| SG["addGroup/updateGroup/deleteGroup() ✅"]
     M -->|"save"| SM["upsertCategory/Area/Storage() ✅"]
     AL -->|"load"| LA["loadAuditLogs() ← Supabase ✅"]
     S -->|"save"| SS["saveSystemSettings() → Supabase ✅"]
@@ -438,25 +444,19 @@ flowchart TD
         ST["useEffect + setTimeout ✅\nออกอัตโนมัติเมื่อ idle\nปรับเวลาได้ใน Settings ✅"]
     end
 
-    subgraph MISSING["❌/⚠️ ยังขาด"]
-        G1["กลุ่มผู้ใช้งาน (User Groups)\ngroupId มีใน DB แต่ยังไม่ใช้งาน"]
-        G2["สิทธิ์รายกลุ่ม\n(ปัจจุบันมีแค่รายบุคคล)"]
-        G3["กรอง Audit Log\nตามช่วงวันเวลา"]
-    end
-
     style ST fill:#10B981,color:#fff
-    style MISSING fill:#FEE2E2
+    style GRP fill:#10B981,color:#fff
 ```
 
 | ข้อ TOR | ข้อกำหนด | สถานะ | หมายเหตุ |
 |---------|----------|-------|---------|
 | 4.9.1(1) | สร้าง/ลบ/แก้ไข Username | ✅ | |
-| 4.9.1(2) | กำหนดกลุ่มผู้ใช้งาน | ⚠️ | `groupId` เก็บใน DB แต่ UI ยังไม่ใช้ |
+| 4.9.1(2) | กำหนดกลุ่มผู้ใช้งาน | ✅ | Groups tab — CRUD + กำหนด permissions รายกลุ่ม |
 | 4.9.1(3) | สิทธิ์รายบุคคล | ✅ | PermissionMap 6 สิทธิ์ |
-| 4.9.1(3) | สิทธิ์รายกลุ่ม | ❌ | ยังไม่ implement group permissions |
+| 4.9.1(3) | สิทธิ์รายกลุ่ม | ✅ | applyGroupPerms() — auto-apply เมื่อเลือก group |
 | 4.9.1(4) | สิทธิ์เข้าดู/แก้ไขทรัพย์สิน | ✅ | PermGuard บน routes |
 | 4.9.1(5) | ประวัติการใช้งาน (username) | ✅ | Audit Logs tab |
-| 4.9.1(5) | กรองตามช่วงวันเวลา | ⚠️ | กรอง action/user ได้ แต่ date range ไม่มี |
+| 4.9.1(5) | กรองตามช่วงวันเวลา | ✅ | auditDateFrom / auditDateTo filter |
 | 4.9.1(6) | Session Timeout อัตโนมัติ | ✅ | |
 | 4.9.1(6) | ปรับเวลา Session Timeout ได้ | ✅ | Settings |
 
@@ -588,34 +588,29 @@ graph LR
 
 ```mermaid
 flowchart LR
-    subgraph DONE["✅ Implemented (28 ข้อ)"]
+    subgraph DONE["✅ Implemented (35 ข้อ)"]
         D1["Lost Report Form\n4.4.1–4.4.5 ครบ"]
         D2["Found Report Form\n4.5.1–4.5.6 ครบ"]
         D3["Handover Form\nลายเซ็น 2 ฝ่าย"]
         D4["Auto-match\n+ Toast/Modal"]
         D5["Property Management\n4.7.1–4.7.4 ครบ"]
-        D6["Reports รายเดือน\nCategory/Area breakdown"]
-        D7["Admin: User CRUD\nMaster Data, Audit Log"]
+        D6["Reports รายวัน/เดือน/ปี\n+ Date range filter ✅"]
+        D7["Admin: User CRUD + Groups\nMaster Data, Audit Log + Date filter ✅"]
         D8["Session Timeout\n+ ปรับได้"]
         D9["Supabase sync\nทุก module"]
+        D10["Search date filter ✅\n(4.6.1)"]
+        D11["Group Permissions ✅\n(4.9.1.2, 4.9.1.3)"]
     end
 
-    subgraph PARTIAL["⚠️ Partial (7 ข้อ)"]
+    subgraph PARTIAL["⚠️ Partial (3 ข้อ)"]
         P1["RFID — simulation\nไม่มี hardware จริง (4.5.1)"]
         P2["Email — mailto เท่านั้น\nไม่ส่งอัตโนมัติ (4.5.7-8)"]
-        P3["Search วันที่\nยังไม่มี date filter (4.6.1)"]
-        P4["User Groups — groupId มี\nแต่ UI ยังไม่ใช้ (4.9.1.2)"]
-        P5["Audit Log filter\nยังไม่มี date range (4.9.1.5)"]
         P6["Responsive — PC ดี\nMobile ยังไม่สมบูรณ์ (4.3)"]
-        P7["Reports — รายเดือน 6 เดือน\nยังไม่มีรายวัน/รายปี (4.8.1-2)"]
     end
 
-    subgraph GAP["❌ Not Yet (6 ข้อ)"]
+    subgraph GAP["❌ Not Yet (3 ข้อ)"]
         G1["PDF Export\nใบส่งมอบ + รายงาน (4.5.7)"]
         G2["อีเมลส่งจริง\nอัตโนมัติ (4.5.7-8)"]
-        G3["User Group Permissions\nสิทธิ์รายกลุ่ม (4.9.1.3)"]
-        G4["Reports รายวัน/รายปี\n+ Date range filter (4.8.1-2)"]
-        G5["Search date range\nfilter (4.6.1)"]
         G6["Password Hashing\nbcrypt (security)"]
     end
 ```
@@ -626,24 +621,22 @@ flowchart LR
 
 ```mermaid
 gantt
-    title Phase 2 — Remaining TOR Features
+    title Phase 2 — Remaining TOR Features (อัปเดต 2026-04-26)
     dateFormat  YYYY-MM-DD
     section 🔴 High
     PDF Export ใบส่งมอบ         :p1, 2026-05-01, 14d
     Email ส่งจริง (Edge Func)    :p2, after p1, 14d
-    Reports รายวัน/รายปี        :p3, 2026-05-01, 10d
 
     section 🟡 Medium
-    Date Range Filter (Search+Reports) :p4, after p2, 7d
-    User Groups & Group Permissions    :p5, after p2, 14d
-    Audit Log Date Filter              :p6, after p4, 5d
-    Mobile Responsive Improve          :p7, 2026-05-15, 10d
+    Mobile Responsive Improve    :p3, 2026-05-01, 14d
+    Password Hashing (bcrypt)    :p4, after p2, 5d
 
     section 🟢 Low
-    RFID Hardware Integration  :p8, after p5, 21d
-    Password Hashing           :p9, after p2, 5d
-    Excel Export               :p10, after p3, 7d
+    Excel Export รายงาน          :p5, after p1, 7d
+    RFID Hardware Integration    :p6, after p2, 21d
 ```
+
+> **หมายเหตุอัปเดต 2026-04-26:** Search date range filter, Reports รายวัน/รายปี, User Groups & Group Permissions, Audit Log date filter — ทั้งหมดได้ implement แล้วใน current build และนำออกจาก backlog
 
 ---
 

@@ -1,6 +1,7 @@
-import { Menu, Bell, ChevronRight } from 'lucide-react';
+import { Menu, Bell, ChevronRight, CloudOff, Cloud } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import RFIDScanner from '../ui/RFIDScanner';
+import { canUseRemoteDataStore } from '../../services/dataStore';
 
 interface NavbarProps {
   onMenuClick: () => void;
@@ -59,6 +60,20 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Supabase sync status badge */}
+        <div
+          title={canUseRemoteDataStore ? 'เชื่อมต่อ Supabase แล้ว — ข้อมูล sync อัตโนมัติ' : 'ไม่ได้เชื่อมต่อ Supabase — ข้อมูลเก็บในเครื่องเท่านั้น'}
+          className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium ${
+            canUseRemoteDataStore
+              ? 'bg-emerald-50 text-emerald-700'
+              : 'bg-amber-50 text-amber-700'
+          }`}
+        >
+          {canUseRemoteDataStore
+            ? <><Cloud size={10} /> Synced</>
+            : <><CloudOff size={10} /> Local only</>
+          }
+        </div>
         <RFIDScanner compact />
         <button className="relative p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
           <Bell size={18} />

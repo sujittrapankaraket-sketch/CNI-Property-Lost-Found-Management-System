@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { DataProvider } from './context/DataContext';
+import { DataProvider, useData } from './context/DataContext';
+import { canUseRemoteDataStore } from './services/dataStore';
+import type { PermissionMap } from './types';
 import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
 import ToastContainer from './components/shared/ToastContainer';
@@ -43,12 +45,23 @@ function AuthGuard() {
   return <AppLayout />;
 }
 
-import type { PermissionMap } from './types';
-
 function PermGuard({ perm }: { perm: keyof PermissionMap }) {
   const { user } = useAuth();
   if (!user || !user.permissions[perm]) return <Navigate to="/" replace />;
   return <Outlet />;
+}
+
+function DataLoadingGate({ children }: { children: ReactNode }) {
+  const { remoteLoaded } = useData();
+  if (!remoteLoaded) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50 flex-col gap-4">
+        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-500">กำลังโหลดข้อมูลจาก Supabase…</p>
+      </div>
+    );
+  }
+  return <>{children}</>;
 }
 
 export default function App() {
@@ -56,7 +69,22 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <DataProvider>
-          <Routes>
+          {canUseRemoteDataStore ? (
+            <DataLoadingGate>
+              <AppRoutes />
+            </DataLoadingGate>
+          ) : (
+            <AppRoutes />
+          )}
+        </DataProvider>
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/claim/:foundId/:lostId" element={<ClaimResponse />} />
             <Route element={<AuthGuard />}>
@@ -93,8 +121,5 @@ export default function App() {
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </DataProvider>
-      </AuthProvider>
-    </BrowserRouter>
   );
 }
