@@ -38,7 +38,8 @@ export default function PropertyList() {
   const getStorage = (id: string) => masterData.storageLocations.find(s => s.id === id)?.name ?? '-';
 
   const handleStatusUpdate = (r: FoundReport, status: string) => {
-    updateFoundReport(r.id, { status: status as any });
+    const extra = status === 'returned' ? { returnedAt: new Date().toISOString() } : {};
+    updateFoundReport(r.id, { status: status as any, ...extra });
     addAuditLog({
       userId: user?.id ?? '',
       username: user?.username ?? '',

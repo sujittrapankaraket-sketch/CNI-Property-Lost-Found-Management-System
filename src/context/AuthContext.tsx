@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { User, PermissionMap, SystemSettings } from '../types';
+import { canUseRemoteDataStore, deleteUserRecord, loadUsers, upsertUser } from '../services/dataStore';
 
 const DEFAULT_PERMISSIONS: PermissionMap = {
   lost_report: true,
@@ -84,6 +85,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── sync users with Supabase ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!canUseRemoteDataStore) return;
+    loadUsers().then(remoteUsers => {
+      if (!remoteUsers) return;
+      if (remoteUsers.length > 0) {
+        setUsers(remoteUsers);
+      } else {
+        // first run: seed Supabase with default users
+        MOCK_USERS.forEach(u => {
+          void upsertUser(u).catch(err => console.error('Failed to seed user', err));
+        });
+      }
+    }).catch(err => console.error('Failed to load users from Supabase', err));
+  }, []);
+
   const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem('cni_user');
@@ -125,15 +142,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const getUsers = () => users.map(({ password: _pw, ...u }) => u);
+
   const updateUser = (updated: User) => {
-    setUsers(prev => prev.map(u => u.id === updated.id ? { ...u, ...updated } : u));
+    setUsers(prev => prev.map(u => {
+      if (u.id !== updated.id) return u;
+      const merged = { ...u, ...updated };
+      void upsertUser(merged).catch(err => console.error('Failed to sync user update', err));
+      return merged;
+    }));
     if (user?.id === updated.id) {
       setUser(updated);
       localStorage.setItem('cni_user', JSON.stringify(updated));
     }
   };
-  const addUser = (newUser: User & { password: string }) => setUsers(prev => [...prev, newUser]);
-  const deleteUser = (id: string) => setUsers(prev => prev.filter(u => u.id !== id));
+
+  const addUser = (newUser: User & { password: string }) => {
+    setUsers(prev => [...prev, newUser]);
+    void upsertUser(newUser).catch(err => console.error('Failed to sync new user', err));
+  };
+
+  const deleteUser = (id: string) => {
+    setUsers(prev => prev.filter(u => u.id !== id));
+    void deleteUserRecord(id).catch(err => console.error('Failed to delete user', err));
+  };
 
   return (
     <AuthContext.Provider value={{

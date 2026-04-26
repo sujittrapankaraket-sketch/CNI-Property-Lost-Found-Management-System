@@ -53,6 +53,8 @@ export interface FoundReport {
   matchedLostId?: string;
   returnAppointment?: string;
   disposalReason?: string;
+  recipientSignature?: string;
+  returnedAt?: string;
   createdAt: string;
   createdBy: string;
 }

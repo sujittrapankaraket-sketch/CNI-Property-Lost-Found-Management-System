@@ -6,10 +6,15 @@ import type {
 } from '../types';
 import {
   canUseRemoteDataStore,
+  deleteArea,
+  deleteCategory,
   insertAuditLog,
   loadRemoteAppState,
+  upsertArea,
+  upsertCategory,
   upsertFoundReport,
   upsertLostReport,
+  upsertStorageLocation,
 } from '../services/dataStore';
 
 const CATEGORIES: PropertyCategory[] = [
@@ -212,6 +217,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setLostReports(state.lostReports);
         setFoundReports(state.foundReports);
         setAuditLogs(state.auditLogs);
+        if (state.categories) setCategories(state.categories);
+        if (state.areas) setAreas(state.areas);
+        if (state.storageLocations) setStorageLocations(state.storageLocations);
       })
       .catch(error => {
         console.error('Failed to load Supabase state', error);
@@ -319,15 +327,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     updateLostReport(lostId, { status: 'matched', matchedFoundId: foundId });
   };
 
-  const addCategory = (c: PropertyCategory) => setCategories(prev => [...prev, c]);
-  const updateCategory = (c: PropertyCategory) => setCategories(prev => prev.map(x => x.id === c.id ? c : x));
-  const deleteCategory = (id: string) => setCategories(prev => prev.filter(x => x.id !== id));
+  const addCategory = (c: PropertyCategory) => {
+    setCategories(prev => [...prev, c]);
+    void upsertCategory(c).catch(err => console.error('Failed to sync category', err));
+  };
+  const updateCategory = (c: PropertyCategory) => {
+    setCategories(prev => prev.map(x => x.id === c.id ? c : x));
+    void upsertCategory(c).catch(err => console.error('Failed to sync category', err));
+  };
+  const deleteCategoryLocal = (id: string) => {
+    setCategories(prev => prev.filter(x => x.id !== id));
+    void deleteCategory(id).catch(err => console.error('Failed to delete category', err));
+  };
 
-  const addArea = (a: Area) => setAreas(prev => [...prev, a]);
-  const updateArea = (a: Area) => setAreas(prev => prev.map(x => x.id === a.id ? a : x));
-  const deleteArea = (id: string) => setAreas(prev => prev.filter(x => x.id !== id));
+  const addArea = (a: Area) => {
+    setAreas(prev => [...prev, a]);
+    void upsertArea(a).catch(err => console.error('Failed to sync area', err));
+  };
+  const updateArea = (a: Area) => {
+    setAreas(prev => prev.map(x => x.id === a.id ? a : x));
+    void upsertArea(a).catch(err => console.error('Failed to sync area', err));
+  };
+  const deleteAreaLocal = (id: string) => {
+    setAreas(prev => prev.filter(x => x.id !== id));
+    void deleteArea(id).catch(err => console.error('Failed to delete area', err));
+  };
 
-  const addStorageLocation = (s: StorageLocation) => setStorageLocations(prev => [...prev, s]);
+  const addStorageLocation = (s: StorageLocation) => {
+    setStorageLocations(prev => [...prev, s]);
+    void upsertStorageLocation(s).catch(err => console.error('Failed to sync storage location', err));
+  };
 
   return (
     <DataContext.Provider value={{
@@ -343,10 +372,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       matchReports,
       addCategory,
       updateCategory,
-      deleteCategory,
+      deleteCategory: deleteCategoryLocal,
       addArea,
       updateArea,
-      deleteArea,
+      deleteArea: deleteAreaLocal,
       addStorageLocation,
       addToast,
       removeToast,

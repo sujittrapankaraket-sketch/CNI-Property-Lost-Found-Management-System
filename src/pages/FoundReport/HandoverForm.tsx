@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Printer, Mail, ArrowLeft, CalendarDays, Save } from 'lucide-react';
+import { Printer, Mail, ArrowLeft, CalendarDays, Save, CheckCircle2, PenLine } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import PageWrapper from '../../components/layout/PageWrapper';
@@ -22,16 +22,17 @@ export default function HandoverForm() {
   const initialAppointment = report?.returnAppointment?.includes('T') ? report.returnAppointment : '';
   const [appointmentDate, setAppointmentDate] = useState(initialAppointment.split('T')[0] ?? '');
   const [appointmentTime, setAppointmentTime] = useState(initialAppointment.split('T')[1] ?? '');
+  const [recipientSig, setRecipientSig] = useState(report?.recipientSignature ?? '');
 
   if (!report) return <PageWrapper><div className="text-center py-12 text-gray-400">ไม่พบรายการ</div></PageWrapper>;
 
-  const cat = masterData.categories.find(c => c.id === report.categoryId);
-  const area = masterData.areas.find(a => a.id === report.foundAreaId);
+  const isReturned  = report.status === 'returned';
+  const cat     = masterData.categories.find(c => c.id === report.categoryId);
+  const area    = masterData.areas.find(a => a.id === report.foundAreaId);
   const storage = masterData.storageLocations.find(s => s.id === report.storageLocationId);
-  const appointment = appointmentDate && appointmentTime ? `${appointmentDate}T${appointmentTime}` : report.returnAppointment || '';
-  const appointmentText = appointment
-    ? appointment.replace('T', ' เวลา ')
-    : 'ยังไม่ระบุ';
+  const appointment = appointmentDate && appointmentTime
+    ? `${appointmentDate}T${appointmentTime}` : report.returnAppointment || '';
+  const appointmentText = appointment ? appointment.replace('T', ' เวลา ') : 'ยังไม่ระบุ';
 
   const handlePrint = () => window.print();
 
@@ -40,7 +41,6 @@ export default function HandoverForm() {
       addToast({ type: 'warning', title: 'กรุณาระบุวันและเวลา' });
       return;
     }
-
     const nextAppointment = `${appointmentDate}T${appointmentTime}`;
     updateFoundReport(report.id, { returnAppointment: nextAppointment, status: 'pending_return' });
     addAuditLog({
@@ -75,17 +75,25 @@ export default function HandoverForm() {
   };
 
   const markReturned = () => {
-    updateFoundReport(report.id, { status: 'returned' });
+    if (!recipientSig) {
+      addToast({ type: 'warning', title: 'กรุณาลงลายเซ็นผู้รับคืนก่อน', message: 'ลากเซ็นชื่อในช่องลายเซ็นด้านล่างเอกสาร' });
+      return;
+    }
+    updateFoundReport(report.id, {
+      status: 'returned',
+      recipientSignature: recipientSig,
+      returnedAt: new Date().toISOString(),
+    });
     addAuditLog({
       userId: user?.id ?? '',
       username: user?.username ?? '',
       action: 'RETURN',
       module: 'Handover',
-      detail: `ยืนยันการคืนทรัพย์สิน ${report.foundCode}`,
+      detail: `ยืนยันการคืนทรัพย์สิน ${report.foundCode} พร้อมลายเซ็นผู้รับคืน`,
       timestamp: new Date().toISOString(),
       ipAddress: '192.168.1.100',
     });
-    addToast({ type: 'success', title: 'ยืนยันการคืนทรัพย์สินแล้ว' });
+    addToast({ type: 'success', title: 'ยืนยันการคืนทรัพย์สินแล้ว', message: 'ลายเซ็นผู้รับคืนถูกบันทึกเรียบร้อย' });
   };
 
   return (
@@ -101,6 +109,7 @@ export default function HandoverForm() {
       }
     >
       <div className="grid lg:grid-cols-[320px_1fr] gap-4">
+        {/* ── sidebar ───────────────────────────────────────────── */}
         <div className="space-y-4 no-print">
           <div className="card p-5 space-y-4">
             <div className="flex items-center gap-2">
@@ -109,15 +118,17 @@ export default function HandoverForm() {
             </div>
             <div>
               <label className="form-label">วันที่คืน</label>
-              <input type="date" value={appointmentDate} onChange={e => setAppointmentDate(e.target.value)} className="form-input" />
+              <input type="date" value={appointmentDate} onChange={e => setAppointmentDate(e.target.value)} className="form-input" disabled={isReturned} />
             </div>
             <div>
               <label className="form-label">เวลาคืน</label>
-              <input type="time" value={appointmentTime} onChange={e => setAppointmentTime(e.target.value)} className="form-input" />
+              <input type="time" value={appointmentTime} onChange={e => setAppointmentTime(e.target.value)} className="form-input" disabled={isReturned} />
             </div>
-            <button onClick={saveAppointment} className="btn-primary w-full flex items-center justify-center gap-2 text-sm">
-              <Save size={15} /> บันทึกนัดหมาย
-            </button>
+            {!isReturned && (
+              <button onClick={saveAppointment} className="btn-primary w-full flex items-center justify-center gap-2 text-sm">
+                <Save size={15} /> บันทึกนัดหมาย
+              </button>
+            )}
           </div>
 
           <div className="card p-5 space-y-3">
@@ -130,10 +141,37 @@ export default function HandoverForm() {
               <p className="text-gray-400 text-xs">รายการสูญหายที่จับคู่</p>
               <p className="font-mono text-primary font-semibold">{matchedLost?.trackingNo ?? 'ยังไม่จับคู่'}</p>
             </div>
-            <button onClick={markReturned} className="btn-secondary w-full text-sm">ยืนยันส่งคืนแล้ว</button>
+
+            {/* signature status indicator */}
+            <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+              recipientSig ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
+            }`}>
+              {recipientSig
+                ? <><CheckCircle2 size={13} /> ลงลายเซ็นแล้ว</>
+                : <><PenLine size={13} /> รอลายเซ็นผู้รับคืน</>
+              }
+            </div>
+
+            {!isReturned && (
+              <button
+                onClick={markReturned}
+                className={`w-full text-sm flex items-center justify-center gap-2 ${
+                  recipientSig ? 'btn-primary' : 'btn-secondary opacity-60'
+                }`}
+              >
+                <CheckCircle2 size={14} /> ยืนยันส่งคืนแล้ว
+              </button>
+            )}
+
+            {isReturned && report.returnedAt && (
+              <p className="text-xs text-gray-400 text-center">
+                คืนแล้วเมื่อ {format(new Date(report.returnedAt), 'd MMM yyyy HH:mm น.', { locale: th })}
+              </p>
+            )}
           </div>
         </div>
 
+        {/* ── document ──────────────────────────────────────────── */}
         <div className="max-w-3xl">
           <div className="card p-8 space-y-6 print:shadow-none print:border-0">
             <div className="text-center border-b border-gray-100 pb-6">
@@ -210,15 +248,32 @@ export default function HandoverForm() {
               ผู้นำส่งได้ลงลายเซ็นอิเล็กทรอนิกส์ไว้ตั้งแต่ขั้นตอนนำส่งทรัพย์สิน ส่วนผู้แจ้งสูญหายลงลายเซ็นเมื่อรับคืนเพื่อยืนยันการส่งมอบและรับคืนทรัพย์สินตามรายละเอียดในเอกสารนี้
             </div>
 
+            {/* ── signatures ──────────────────────────────────────── */}
             <div className="grid md:grid-cols-2 gap-4 pt-2">
+              {/* finder signature — always read-only */}
               <SignaturePad
                 label="ลายเซ็นผู้แจ้งพบ / ผู้นำส่ง"
                 name={report.finder.name}
                 value={report.finderSignature}
                 readOnly
               />
-              <SignaturePad label="ลายเซ็นผู้แจ้งสูญหาย / ผู้รับคืน" name={matchedLost?.reporter.name ?? ''} />
+
+              {/* recipient signature — editable until returned */}
+              <SignaturePad
+                label="ลายเซ็นผู้แจ้งสูญหาย / ผู้รับคืน"
+                name={matchedLost?.reporter.name ?? ''}
+                value={recipientSig || undefined}
+                onChange={isReturned ? undefined : setRecipientSig}
+                readOnly={isReturned}
+              />
             </div>
+
+            {/* prompt if not yet signed */}
+            {!isReturned && !recipientSig && (
+              <p className="text-xs text-amber-600 text-center flex items-center justify-center gap-1">
+                <PenLine size={12} /> ลากเซ็นชื่อในช่องด้านบนก่อนกด "ยืนยันส่งคืนแล้ว"
+              </p>
+            )}
           </div>
         </div>
       </div>

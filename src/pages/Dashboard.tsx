@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, Package, GitMerge, Plus, ArrowRight, BarChart2, CalendarDays, Filter } from 'lucide-react';
+import { AlertCircle, Package, GitMerge, Plus, ArrowRight, BarChart2, CalendarDays, Filter, CheckCircle2, Clock, Trash2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { eachDayOfInterval, endOfDay, format, isValid, isWithinInterval, parseISO, subDays } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -18,10 +18,13 @@ export default function Dashboard() {
   const [lostStatus, setLostStatus] = useState('');
   const [foundStatus, setFoundStatus] = useState('');
 
-  const totalLost = lostReports.length;
-  const totalFound = foundReports.length;
-  const matched = foundReports.filter(r => r.status === 'matched').length;
-  const pendingLost = lostReports.filter(r => r.status === 'open').length;
+  const totalLost    = lostReports.length;
+  const totalFound   = foundReports.length;
+  const pendingLost  = lostReports.filter(r => r.status === 'open').length;
+  const returned     = foundReports.filter(r => r.status === 'returned').length;
+  const pendingReturn = foundReports.filter(r => r.status === 'pending_return').length;
+  const expired      = foundReports.filter(r => r.status === 'expired').length;
+  const returnRate   = totalFound > 0 ? Math.round((returned / totalFound) * 100) : 0;
 
   const recentActivity = [
     ...lostReports.slice(0, 3).map(r => ({ type: 'lost' as const, code: r.trackingNo, desc: r.description, time: r.createdAt, status: r.status })),
@@ -40,7 +43,7 @@ export default function Dashboard() {
     },
     {
       label: 'ทรัพย์สินหลงลืม',
-      desc: 'ตรวจสอบทรัพย์สินที่จัดเก็บ',
+      desc: `${foundReports.filter(r => r.status === 'stored').length} กำลังจัดเก็บ`,
       value: totalFound,
       path: '/found',
       icon: Package,
@@ -48,13 +51,13 @@ export default function Dashboard() {
       iconCls: 'bg-blue-100 text-blue-600',
     },
     {
-      label: 'ค้นหา/จับคู่',
-      desc: `${matched} รายการจับคู่แล้ว`,
-      value: foundReports.filter(r => r.status === 'stored').length,
-      path: '/search',
-      icon: GitMerge,
-      cls: 'border-purple-100 bg-purple-50/70 text-purple-700 hover:border-purple-200 hover:bg-purple-50',
-      iconCls: 'bg-purple-100 text-purple-600',
+      label: 'ส่งคืนแล้ว',
+      desc: `${returnRate}% อัตราการคืน`,
+      value: returned,
+      path: '/property',
+      icon: CheckCircle2,
+      cls: 'border-green-100 bg-green-50/70 text-green-700 hover:border-green-200 hover:bg-green-50',
+      iconCls: 'bg-green-100 text-green-600',
     },
     {
       label: 'รายงานสถิติ',
@@ -69,31 +72,31 @@ export default function Dashboard() {
 
   const chartData = useMemo(() => {
     const parsedFrom = parseISO(chartFrom);
-    const parsedTo = parseISO(chartTo);
+    const parsedTo   = parseISO(chartTo);
     const from = isValid(parsedFrom) ? parsedFrom : subDays(new Date(), 6);
-    const to = isValid(parsedTo) ? parsedTo : new Date();
+    const to   = isValid(parsedTo)   ? parsedTo   : new Date();
     const rangeStart = from <= to ? from : to;
-    const rangeEnd = from <= to ? to : from;
-    const interval = { start: rangeStart, end: rangeEnd };
+    const rangeEnd   = from <= to ? to   : from;
 
-    return eachDayOfInterval(interval).map(day => {
-      const dayStart = day;
-      const dayEnd = endOfDay(day);
-      const dayInterval = { start: dayStart, end: dayEnd };
-      const lost = lostReports.filter(report => {
-        const createdAt = parseISO(report.createdAt);
-        return isWithinInterval(createdAt, dayInterval) && (!lostStatus || report.status === lostStatus);
-      }).length;
-      const found = foundReports.filter(report => {
-        const createdAt = parseISO(report.createdAt);
-        return isWithinInterval(createdAt, dayInterval) && (!foundStatus || report.status === foundStatus);
+    return eachDayOfInterval({ start: rangeStart, end: rangeEnd }).map(day => {
+      const dayInterval = { start: day, end: endOfDay(day) };
+
+      const lost = lostReports.filter(r => {
+        return isWithinInterval(parseISO(r.createdAt), dayInterval) && (!lostStatus || r.status === lostStatus);
       }).length;
 
-      return {
-        date: format(day, 'd MMM', { locale: th }),
-        lost,
-        found,
-      };
+      const found = foundReports.filter(r => {
+        return isWithinInterval(parseISO(r.createdAt), dayInterval) && (!foundStatus || r.status === foundStatus);
+      }).length;
+
+      // use returnedAt when available, fall back to createdAt for already-returned items
+      const returnedDay = foundReports.filter(r => {
+        if (r.status !== 'returned') return false;
+        const date = parseISO(r.returnedAt ?? r.createdAt);
+        return isWithinInterval(date, dayInterval);
+      }).length;
+
+      return { date: format(day, 'd MMM', { locale: th }), lost, found, returned: returnedDay };
     });
   }, [chartFrom, chartTo, foundReports, foundStatus, lostReports, lostStatus]);
 
@@ -119,7 +122,7 @@ export default function Dashboard() {
       }
     >
       {/* Quick links */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
         {quickLinks.map(q => {
           const Icon = q.icon;
           return (
@@ -146,6 +149,31 @@ export default function Dashboard() {
             </button>
           );
         })}
+      </div>
+
+      {/* Return status strip */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="flex items-center gap-3 bg-green-50 border border-green-100 rounded-xl px-4 py-3">
+          <CheckCircle2 size={18} className="text-green-500 flex-shrink-0" />
+          <div>
+            <div className="text-lg font-bold text-green-700 tabular-nums">{returned}</div>
+            <div className="text-xs text-green-600">ส่งคืนแล้ว</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3">
+          <Clock size={18} className="text-purple-500 flex-shrink-0" />
+          <div>
+            <div className="text-lg font-bold text-purple-700 tabular-nums">{pendingReturn}</div>
+            <div className="text-xs text-purple-600">รอส่งคืน</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+          <Trash2 size={18} className="text-red-400 flex-shrink-0" />
+          <div>
+            <div className="text-lg font-bold text-red-600 tabular-nums">{expired}</div>
+            <div className="text-xs text-red-500">หมดอายุ / รอทำลาย</div>
+          </div>
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
@@ -197,17 +225,18 @@ export default function Dashboard() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData} barSize={20}>
+            <BarChart data={chartData} barSize={16}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} />
               <Tooltip
                 contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', fontSize: '12px' }}
                 cursor={{ fill: '#F9FAFB' }}
               />
               <Legend wrapperStyle={{ fontSize: '12px' }} />
-              <Bar dataKey="lost" name="สูญหาย" fill="#C8102E" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="found" name="พบ" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="lost"     name="สูญหาย"     fill="#C8102E" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="found"    name="พบ"         fill="#3B82F6" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="returned" name="ส่งคืนแล้ว" fill="#10B981" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

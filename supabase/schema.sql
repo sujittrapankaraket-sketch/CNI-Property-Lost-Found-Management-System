@@ -1,38 +1,23 @@
-create table if not exists public.lost_reports (
-  id text primary key,
-  tracking_no text not null unique,
-  status text not null check (status in ('open', 'matched', 'closed')),
-  matched_found_id text,
-  payload jsonb not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+-- =============================================================
+-- CNI Lost & Found System — Complete Database Schema
+-- =============================================================
 
-create table if not exists public.found_reports (
-  id text primary key,
-  found_code text not null unique,
-  rfid_tag text,
-  status text not null check (status in ('stored', 'matched', 'returned', 'expired', 'pending_return', 'rejected_return', 'disposal_requested')),
-  matched_lost_id text,
-  payload jsonb not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+-- ─────────────────────────────────────────────────────────────
+-- RESET: drop all tables (safe to re-run)
+-- ─────────────────────────────────────────────────────────────
 
-create table if not exists public.audit_logs (
-  id text primary key,
-  action text not null,
-  module text not null,
-  payload jsonb not null,
-  created_at timestamptz not null default now()
-);
+drop table if exists public.audit_logs       cascade;
+drop table if exists public.found_reports    cascade;
+drop table if exists public.lost_reports     cascade;
+drop table if exists public.storage_locations cascade;
+drop table if exists public.areas            cascade;
+drop table if exists public.property_categories cascade;
+drop table if exists public.users            cascade;
+drop table if exists public.system_settings  cascade;
 
-create index if not exists lost_reports_status_idx on public.lost_reports (status);
-create index if not exists lost_reports_tracking_no_idx on public.lost_reports (tracking_no);
-create index if not exists found_reports_status_idx on public.found_reports (status);
-create index if not exists found_reports_found_code_idx on public.found_reports (found_code);
-create index if not exists found_reports_rfid_tag_idx on public.found_reports (rfid_tag);
-create index if not exists audit_logs_created_at_idx on public.audit_logs (created_at desc);
+-- ─────────────────────────────────────────────────────────────
+-- SHARED TRIGGER: updated_at
+-- ─────────────────────────────────────────────────────────────
 
 create or replace function public.set_updated_at()
 returns trigger as $$
@@ -42,54 +27,369 @@ begin
 end;
 $$ language plpgsql;
 
-drop trigger if exists set_lost_reports_updated_at on public.lost_reports;
-create trigger set_lost_reports_updated_at
-before update on public.lost_reports
-for each row execute function public.set_updated_at();
+-- ─────────────────────────────────────────────────────────────
+-- MASTER DATA: property_categories
+-- ─────────────────────────────────────────────────────────────
 
-drop trigger if exists set_found_reports_updated_at on public.found_reports;
-create trigger set_found_reports_updated_at
-before update on public.found_reports
-for each row execute function public.set_updated_at();
+create table if not exists public.property_categories (
+  id            text primary key,
+  name          text not null,
+  name_en       text not null default '',
+  retention_days int  not null default 365,
+  icon          text not null default '📦',
+  created_at    timestamptz not null default now()
+);
 
-alter table public.lost_reports enable row level security;
-alter table public.found_reports enable row level security;
-alter table public.audit_logs enable row level security;
+-- ─────────────────────────────────────────────────────────────
+-- MASTER DATA: areas
+-- ─────────────────────────────────────────────────────────────
 
-drop policy if exists "Allow public read lost reports" on public.lost_reports;
-create policy "Allow public read lost reports"
-on public.lost_reports for select
-to anon
-using (true);
+create table if not exists public.areas (
+  id         text primary key,
+  name       text not null,
+  floor      text not null default '',
+  zone       text not null default '',
+  created_at timestamptz not null default now()
+);
 
-drop policy if exists "Allow public write lost reports" on public.lost_reports;
-create policy "Allow public write lost reports"
-on public.lost_reports for all
-to anon
-using (true)
-with check (true);
+-- ─────────────────────────────────────────────────────────────
+-- MASTER DATA: storage_locations
+-- ─────────────────────────────────────────────────────────────
 
-drop policy if exists "Allow public read found reports" on public.found_reports;
-create policy "Allow public read found reports"
-on public.found_reports for select
-to anon
-using (true);
+create table if not exists public.storage_locations (
+  id         text primary key,
+  name       text not null,
+  capacity   int  not null default 0,
+  created_at timestamptz not null default now()
+);
 
-drop policy if exists "Allow public write found reports" on public.found_reports;
-create policy "Allow public write found reports"
-on public.found_reports for all
-to anon
-using (true)
-with check (true);
+-- ─────────────────────────────────────────────────────────────
+-- USERS
+-- ─────────────────────────────────────────────────────────────
 
-drop policy if exists "Allow public read audit logs" on public.audit_logs;
-create policy "Allow public read audit logs"
-on public.audit_logs for select
-to anon
-using (true);
+create table if not exists public.users (
+  id            text primary key,
+  username      text not null unique,
+  password_hash text not null,
+  full_name     text not null,
+  role          text not null default 'staff'
+    check (role in ('admin', 'staff', 'viewer')),
+  group_id      text,
+  permissions   jsonb not null default '{
+    "lost_report": true,
+    "found_report": true,
+    "search_match": true,
+    "property_management": true,
+    "reports": true,
+    "admin": false
+  }',
+  is_active     boolean not null default true,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
 
-drop policy if exists "Allow public write audit logs" on public.audit_logs;
-create policy "Allow public write audit logs"
-on public.audit_logs for insert
-to anon
-with check (true);
+-- ─────────────────────────────────────────────────────────────
+-- SYSTEM SETTINGS  (single-row table)
+-- ─────────────────────────────────────────────────────────────
+
+create table if not exists public.system_settings (
+  id                       text primary key default 'default',
+  session_timeout_minutes  int  not null default 30,
+  organization_name        text not null default 'ClickNext Innovation',
+  logo_url                 text not null default '',
+  updated_at               timestamptz not null default now(),
+  constraint single_row check (id = 'default')
+);
+
+-- ─────────────────────────────────────────────────────────────
+-- LOST REPORTS
+-- ─────────────────────────────────────────────────────────────
+
+create table if not exists public.lost_reports (
+  id                   text primary key,
+  tracking_no          text not null unique,
+
+  -- item details (also stored in payload for quick serialisation)
+  category_id          text references public.property_categories(id) on delete set null,
+  color                text not null default '',
+  size                 text not null default '',
+  qty                  int  not null default 1,
+  description          text not null default '',
+  photos               jsonb not null default '[]',
+
+  -- location
+  lost_area_id         text references public.areas(id) on delete set null,
+  lost_area_note       text not null default '',
+  lost_date_from       date,
+  lost_date_to         date,
+  lost_time_from       text not null default '',
+  lost_time_to         text not null default '',
+
+  -- reporter
+  reporter_name        text not null default '',
+  reporter_nationality text not null default '',
+  reporter_phone       text not null default '',
+  reporter_email       text not null default '',
+
+  -- workflow
+  status               text not null default 'open'
+    check (status in ('open', 'matched', 'closed')),
+  matched_found_id     text,          -- FK added after found_reports exists
+
+  created_by           text not null default '',
+  payload              jsonb not null,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+-- ─────────────────────────────────────────────────────────────
+-- FOUND REPORTS
+-- ─────────────────────────────────────────────────────────────
+
+create table if not exists public.found_reports (
+  id                   text primary key,
+  found_code           text not null unique,
+  rfid_tag             text not null default '',
+
+  -- item details
+  category_id          text references public.property_categories(id) on delete set null,
+  color                text not null default '',
+  size                 text not null default '',
+  qty                  int  not null default 1,
+  description          text not null default '',
+  photos               jsonb not null default '[]',
+
+  -- location
+  found_area_id        text references public.areas(id) on delete set null,
+  found_area_note      text not null default '',
+  found_date           date,
+  found_time           text not null default '',
+
+  -- finder
+  finder_name          text not null default '',
+  finder_nationality   text not null default '',
+  finder_phone         text not null default '',
+  finder_email         text not null default '',
+  finder_signature     text,          -- base64 data-url
+
+  -- storage & workflow
+  storage_location_id  text references public.storage_locations(id) on delete set null,
+  status               text not null default 'stored'
+    check (status in (
+      'stored', 'matched', 'returned', 'expired',
+      'pending_return', 'rejected_return', 'disposal_requested'
+    )),
+  expires_at           date,
+  matched_lost_id      text references public.lost_reports(id) on delete set null,
+  return_appointment   timestamptz,
+  disposal_reason      text,
+  recipient_signature  text,          -- base64 data-url ลายเซ็นผู้รับคืน
+  returned_at          timestamptz,
+
+  created_by           text not null default '',
+  payload              jsonb not null,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+-- cross-reference FK (both tables now exist)
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'lost_reports_matched_found_id_fkey'
+  ) then
+    alter table public.lost_reports
+      add constraint lost_reports_matched_found_id_fkey
+      foreign key (matched_found_id) references public.found_reports(id) on delete set null;
+  end if;
+end $$;
+
+-- ─────────────────────────────────────────────────────────────
+-- AUDIT LOGS
+-- ─────────────────────────────────────────────────────────────
+
+create table if not exists public.audit_logs (
+  id         text primary key,
+  user_id    text not null default '',
+  username   text not null default '',
+  action     text not null,
+  module     text not null,
+  detail     text not null default '',
+  ip_address text not null default '',
+  payload    jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+-- ─────────────────────────────────────────────────────────────
+-- INDEXES
+-- ─────────────────────────────────────────────────────────────
+
+-- lost_reports
+create index if not exists lost_reports_status_idx      on public.lost_reports (status);
+create index if not exists lost_reports_tracking_no_idx on public.lost_reports (tracking_no);
+create index if not exists lost_reports_category_idx    on public.lost_reports (category_id);
+create index if not exists lost_reports_created_at_idx  on public.lost_reports (created_at desc);
+create index if not exists lost_reports_reporter_email  on public.lost_reports (reporter_email);
+
+-- found_reports
+create index if not exists found_reports_status_idx      on public.found_reports (status);
+create index if not exists found_reports_found_code_idx  on public.found_reports (found_code);
+create index if not exists found_reports_rfid_tag_idx    on public.found_reports (rfid_tag);
+create index if not exists found_reports_category_idx    on public.found_reports (category_id);
+create index if not exists found_reports_expires_at_idx  on public.found_reports (expires_at);
+create index if not exists found_reports_created_at_idx  on public.found_reports (created_at desc);
+
+-- audit_logs
+create index if not exists audit_logs_created_at_idx on public.audit_logs (created_at desc);
+create index if not exists audit_logs_user_id_idx    on public.audit_logs (user_id);
+create index if not exists audit_logs_action_idx     on public.audit_logs (action);
+
+-- users
+create index if not exists users_username_idx on public.users (username);
+create index if not exists users_role_idx     on public.users (role);
+
+-- ─────────────────────────────────────────────────────────────
+-- TRIGGERS: updated_at
+-- ─────────────────────────────────────────────────────────────
+
+drop trigger if exists trg_lost_reports_updated_at   on public.lost_reports;
+create trigger trg_lost_reports_updated_at
+  before update on public.lost_reports
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_found_reports_updated_at  on public.found_reports;
+create trigger trg_found_reports_updated_at
+  before update on public.found_reports
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_users_updated_at          on public.users;
+create trigger trg_users_updated_at
+  before update on public.users
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_system_settings_updated_at on public.system_settings;
+create trigger trg_system_settings_updated_at
+  before update on public.system_settings
+  for each row execute function public.set_updated_at();
+
+-- ─────────────────────────────────────────────────────────────
+-- ROW LEVEL SECURITY
+-- ─────────────────────────────────────────────────────────────
+
+alter table public.property_categories enable row level security;
+alter table public.areas               enable row level security;
+alter table public.storage_locations   enable row level security;
+alter table public.users               enable row level security;
+alter table public.system_settings     enable row level security;
+alter table public.lost_reports        enable row level security;
+alter table public.found_reports       enable row level security;
+alter table public.audit_logs          enable row level security;
+
+-- property_categories
+drop policy if exists "anon read property_categories"  on public.property_categories;
+create policy "anon read property_categories"
+  on public.property_categories for select to anon using (true);
+
+drop policy if exists "anon write property_categories" on public.property_categories;
+create policy "anon write property_categories"
+  on public.property_categories for all to anon using (true) with check (true);
+
+-- areas
+drop policy if exists "anon read areas"  on public.areas;
+create policy "anon read areas"
+  on public.areas for select to anon using (true);
+
+drop policy if exists "anon write areas" on public.areas;
+create policy "anon write areas"
+  on public.areas for all to anon using (true) with check (true);
+
+-- storage_locations
+drop policy if exists "anon read storage_locations"  on public.storage_locations;
+create policy "anon read storage_locations"
+  on public.storage_locations for select to anon using (true);
+
+drop policy if exists "anon write storage_locations" on public.storage_locations;
+create policy "anon write storage_locations"
+  on public.storage_locations for all to anon using (true) with check (true);
+
+-- users  (no password in SELECT — app never exposes password_hash via API)
+drop policy if exists "anon read users"  on public.users;
+create policy "anon read users"
+  on public.users for select to anon using (true);
+
+drop policy if exists "anon write users" on public.users;
+create policy "anon write users"
+  on public.users for all to anon using (true) with check (true);
+
+-- system_settings
+drop policy if exists "anon read system_settings"  on public.system_settings;
+create policy "anon read system_settings"
+  on public.system_settings for select to anon using (true);
+
+drop policy if exists "anon write system_settings" on public.system_settings;
+create policy "anon write system_settings"
+  on public.system_settings for all to anon using (true) with check (true);
+
+-- lost_reports
+drop policy if exists "anon read lost_reports"  on public.lost_reports;
+create policy "anon read lost_reports"
+  on public.lost_reports for select to anon using (true);
+
+drop policy if exists "anon write lost_reports" on public.lost_reports;
+create policy "anon write lost_reports"
+  on public.lost_reports for all to anon using (true) with check (true);
+
+-- found_reports
+drop policy if exists "anon read found_reports"  on public.found_reports;
+create policy "anon read found_reports"
+  on public.found_reports for select to anon using (true);
+
+drop policy if exists "anon write found_reports" on public.found_reports;
+create policy "anon write found_reports"
+  on public.found_reports for all to anon using (true) with check (true);
+
+-- audit_logs  (read + insert only — no update/delete)
+drop policy if exists "anon read audit_logs"  on public.audit_logs;
+create policy "anon read audit_logs"
+  on public.audit_logs for select to anon using (true);
+
+drop policy if exists "anon insert audit_logs" on public.audit_logs;
+create policy "anon insert audit_logs"
+  on public.audit_logs for insert to anon with check (true);
+
+-- ─────────────────────────────────────────────────────────────
+-- SEED DATA — master data (idempotent)
+-- ─────────────────────────────────────────────────────────────
+
+insert into public.property_categories (id, name, name_en, retention_days, icon) values
+  ('c1', 'บัตร/เอกสาร',            'Card/Document', 365, '🪪'),
+  ('c2', 'พวงกุญแจ',               'Keys',          365, '🔑'),
+  ('c3', 'กระเป๋า',                'Bag',           365, '👜'),
+  ('c4', 'อุปกรณ์อิเล็กทรอนิกส์', 'Electronics',   365, '📱'),
+  ('c5', 'อาหาร/เครื่องดื่ม',      'Food/Beverage',   1, '🍱'),
+  ('c6', 'เสื้อผ้า/แฟชั่น',        'Clothing',      365, '👔'),
+  ('c7', 'เครื่องประดับ',           'Jewelry',       365, '💍'),
+  ('c8', 'อื่นๆ',                   'Others',        365, '📦')
+on conflict (id) do nothing;
+
+insert into public.areas (id, name, floor, zone) values
+  ('a1', 'ชั้น 1 - ประตูทางเข้าหลัก', '1',  'A'),
+  ('a2', 'ชั้น 1 - ลานกิจกรรม',       '1',  'B'),
+  ('a3', 'ชั้น 2 - ห้องน้ำ',           '2',  'A'),
+  ('a4', 'ชั้น 2 - ร้านอาหาร',         '2',  'B'),
+  ('a5', 'ชั้น 3 - Cinema',            '3',  'A'),
+  ('a6', 'ชั้น B1 - ที่จอดรถ',         'B1', 'A'),
+  ('a7', 'ชั้น B2 - ที่จอดรถ',         'B2', 'A'),
+  ('a8', 'ชั้น 4 - Zone Kids',         '4',  'B')
+on conflict (id) do nothing;
+
+insert into public.storage_locations (id, name, capacity) values
+  ('sl1', 'ตู้ A-01',           20),
+  ('sl2', 'ตู้ A-02',           20),
+  ('sl3', 'ตู้ B-01',           15),
+  ('sl4', 'ห้องเก็บของชั้น 1', 100),
+  ('sl5', 'ตู้เย็น (อาหาร)',    30)
+on conflict (id) do nothing;
+
+insert into public.system_settings (id, session_timeout_minutes, organization_name, logo_url) values
+  ('default', 30, 'ClickNext Innovation', '')
+on conflict (id) do nothing;
