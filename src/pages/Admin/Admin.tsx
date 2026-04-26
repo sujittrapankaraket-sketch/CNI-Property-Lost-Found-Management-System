@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Users, Database, ClipboardList, Settings, Plus, Pencil, Trash2, Shield, Clock, UsersRound, Calendar, Wifi, CheckCircle2, XCircle } from 'lucide-react';
+import { Users, Database, ClipboardList, Settings, Plus, Pencil, Trash2, Shield, Clock, UsersRound, Calendar, Wifi, CheckCircle2, XCircle, Monitor } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import PageWrapper from '../../components/layout/PageWrapper';
 import Modal from '../../components/ui/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import type { User, UserGroup, PropertyCategory, Area, StorageLocation, RFIDReaderConfig, RFIDConnectionType } from '../../types';
+import type { User, UserGroup, PropertyCategory, Area, StorageLocation, RFIDReaderConfig, RFIDConnectionType, WorkstationConfig } from '../../types';
 
 type Tab = 'users' | 'groups' | 'master' | 'audit' | 'settings' | 'rfid';
 
@@ -24,7 +24,7 @@ const DEFAULT_PERMS = {
 
 export default function Admin() {
   const { getUsers, updateUser, addUser, deleteUser, getGroups, addGroup, updateGroup, deleteGroup, settings, updateSettings } = useAuth();
-  const { masterData, addCategory, updateCategory, deleteCategory, addArea, updateArea, deleteArea, addStorageLocation, updateStorageLocation, deleteStorageLocation, auditLogs, rfidReaders, activeReaderId, addRFIDReader, updateRFIDReader, deleteRFIDReader, setActiveReader } = useData();
+  const { masterData, addCategory, updateCategory, deleteCategory, addArea, updateArea, deleteArea, addStorageLocation, updateStorageLocation, deleteStorageLocation, auditLogs, rfidReaders, activeReaderId, addRFIDReader, updateRFIDReader, deleteRFIDReader, setActiveReader, workstations, deviceId, updateWorkstation, deleteWorkstation } = useData();
   const [tab, setTab] = useState<Tab>('users');
 
   // ── user state ────────────────────────────────────────────────────────────
@@ -142,6 +142,21 @@ export default function Admin() {
     const data: RFIDReaderConfig = { ...editRfid, ...rfidForm, id: editRfid?.id ?? Date.now().toString(), createdAt: editRfid?.createdAt ?? new Date().toISOString() };
     editRfid ? updateRFIDReader(data) : addRFIDReader(data);
     setRfidModal(false);
+  };
+
+  // ── workstation state ─────────────────────────────────────────────────────
+  const [wsModal, setWsModal] = useState(false);
+  const [editWs, setEditWs] = useState<WorkstationConfig | null>(null);
+  const [wsForm, setWsForm] = useState({ name: '', readerId: '' });
+
+  const openEditWs = (w: WorkstationConfig) => {
+    setEditWs(w);
+    setWsForm({ name: w.name, readerId: w.readerId });
+    setWsModal(true);
+  };
+  const saveWs = () => {
+    if (editWs) updateWorkstation({ ...editWs, ...wsForm });
+    setWsModal(false);
   };
 
   // ── shared label maps ─────────────────────────────────────────────────────
@@ -433,6 +448,48 @@ export default function Admin() {
               })}
             </div>
           )}
+
+          {/* Workstations section */}
+          <div className="mt-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Monitor size={15} className="text-gray-500" />
+              <h3 className="font-semibold text-gray-800 text-sm">สถานีประจำการ (Workstations)</h3>
+              <span className="text-xs text-gray-400">— อุปกรณ์ที่เคยใช้งานระบบ</span>
+            </div>
+            {workstations.length === 0 ? (
+              <div className="card p-6 text-center text-gray-400 text-sm">ยังไม่มีสถานีลงทะเบียน</div>
+            ) : (
+              <div className="space-y-2">
+                {workstations.map(w => {
+                  const isCurrentDevice = w.id === deviceId;
+                  const assignedReader = rfidReaders.find(r => r.id === w.readerId);
+                  return (
+                    <div key={w.id} className={`card p-3 flex flex-col sm:flex-row sm:items-center gap-3 ${isCurrentDevice ? 'border-primary/20 bg-primary/5' : ''}`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isCurrentDevice ? 'bg-primary/10' : 'bg-gray-100'}`}>
+                        <Monitor size={14} className={isCurrentDevice ? 'text-primary' : 'text-gray-400'} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-gray-900 text-sm">{w.name}</span>
+                          {isCurrentDevice && <span className="text-[10px] bg-primary text-white px-2 py-0.5 rounded-full font-medium">อุปกรณ์นี้</span>}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5 space-x-3">
+                          <span>เครื่องอ่าน: <span className="font-medium text-gray-600">{assignedReader?.name ?? '— ยังไม่กำหนด —'}</span></span>
+                          <span>พบล่าสุด: {format(new Date(w.lastSeen), 'd MMM yy HH:mm', { locale: th })}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => openEditWs(w)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><Pencil size={13} /></button>
+                        {!isCurrentDevice && (
+                          <button onClick={() => deleteWorkstation(w.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={13} /></button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -746,6 +803,29 @@ export default function Admin() {
           <div className="flex gap-3 pt-2">
             <button onClick={() => setRfidModal(false)} className="btn-secondary flex-1">ยกเลิก</button>
             <button onClick={saveRfid} disabled={!rfidForm.name.trim()} className="btn-primary flex-1">บันทึก</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Workstation Modal ─────────────────────────────────────────────── */}
+      <Modal open={wsModal} onClose={() => setWsModal(false)} title="แก้ไขสถานีประจำการ" size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="form-label">ชื่อสถานี</label>
+            <input value={wsForm.name} onChange={e => setWsForm(f => ({ ...f, name: e.target.value }))} className="form-input" placeholder="เช่น เคาน์เตอร์ 1, ประตูทางเข้า" />
+          </div>
+          <div>
+            <label className="form-label">เครื่องอ่าน RFID ที่กำหนด</label>
+            <select value={wsForm.readerId} onChange={e => setWsForm(f => ({ ...f, readerId: e.target.value }))} className="form-input">
+              <option value="">— ยังไม่กำหนดเครื่องอ่าน —</option>
+              {rfidReaders.filter(r => r.isActive).map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setWsModal(false)} className="btn-secondary flex-1">ยกเลิก</button>
+            <button onClick={saveWs} disabled={!wsForm.name.trim()} className="btn-primary flex-1">บันทึก</button>
           </div>
         </div>
       </Modal>

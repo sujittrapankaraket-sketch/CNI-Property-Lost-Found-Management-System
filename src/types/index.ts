@@ -158,3 +158,11 @@ export interface RFIDReaderConfig {
   note?: string;
   createdAt: string;
 }
+
+export interface WorkstationConfig {
+  id: string;        // deviceId — unique per browser/device
+  name: string;      // workstation display name
+  readerId: string;  // assigned RFIDReaderConfig id
+  lastSeen: string;  // ISO timestamp of last app load
+  createdAt: string;
+}

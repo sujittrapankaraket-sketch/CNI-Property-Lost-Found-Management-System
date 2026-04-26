@@ -2,20 +2,24 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { addDays, format } from 'date-fns';
 import type {
   LostReport, FoundReport, MasterData, PropertyCategory, Area,
-  StorageLocation, AuditLog, Toast, RFIDReaderConfig
+  StorageLocation, AuditLog, Toast, RFIDReaderConfig, WorkstationConfig
 } from '../types';
 import {
   canUseRemoteDataStore,
   deleteArea,
   deleteCategory,
+  deleteRFIDReaderRecord,
   deleteStorageLocationRecord,
+  deleteWorkstationRecord,
   insertAuditLog,
   loadRemoteAppState,
   upsertArea,
   upsertCategory,
   upsertFoundReport,
   upsertLostReport,
+  upsertRFIDReader,
   upsertStorageLocation,
+  upsertWorkstation,
 } from '../services/dataStore';
 
 const CATEGORIES: PropertyCategory[] = [
@@ -156,6 +160,21 @@ function writeStoredState(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota / private browsing — skip cache */ }
 }
 
+function getOrCreateDeviceId(): string {
+  try {
+    let id = localStorage.getItem('cni_device_id');
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem('cni_device_id', id);
+    }
+    return id;
+  } catch {
+    return 'unknown-device';
+  }
+}
+
+const DEVICE_ID = getOrCreateDeviceId();
+
 interface DataContextType {
   lostReports: LostReport[];
   foundReports: FoundReport[];
@@ -165,6 +184,8 @@ interface DataContextType {
   remoteLoaded: boolean;
   rfidReaders: RFIDReaderConfig[];
   activeReaderId: string;
+  workstations: WorkstationConfig[];
+  deviceId: string;
   addLostReport: (r: Omit<LostReport, 'id' | 'trackingNo' | 'createdAt'>) => LostReport;
   addFoundReport: (r: Omit<FoundReport, 'id' | 'foundCode' | 'createdAt'>) => { report: FoundReport; matches: LostReport[] };
   updateLostReport: (id: string, updates: Partial<LostReport>) => void;
@@ -183,6 +204,8 @@ interface DataContextType {
   updateRFIDReader: (r: RFIDReaderConfig) => void;
   deleteRFIDReader: (id: string) => void;
   setActiveReader: (id: string) => void;
+  updateWorkstation: (w: WorkstationConfig) => void;
+  deleteWorkstation: (id: string) => void;
   addToast: (t: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
   addAuditLog: (log: Omit<AuditLog, 'id'>) => void;
@@ -239,9 +262,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [rfidReaders, setRfidReaders] = useState<RFIDReaderConfig[]>(() =>
     readStoredState('cni_rfid_readers', [] as RFIDReaderConfig[])
   );
-  const [activeReaderId, setActiveReaderId] = useState<string>(() =>
-    readStoredState('cni_active_reader', '')
+  const [workstations, setWorkstations] = useState<WorkstationConfig[]>(() =>
+    readStoredState('cni_workstations', [] as WorkstationConfig[])
   );
+  const activeReaderId = workstations.find(w => w.id === DEVICE_ID)?.readerId ?? '';
   // remoteLoaded: false = กำลังโหลดจาก Supabase, true = พร้อมใช้งาน
   const [remoteLoaded, setRemoteLoaded] = useState(!canUseRemoteDataStore);
 
@@ -311,17 +335,50 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (remoteLoaded) writeStoredState(STORAGE_KEYS.auditLogs, auditLogs);
   }, [auditLogs, remoteLoaded]);
 
-  // RFID reader configs are always device-local (localStorage only)
+  // RFID reader configs and workstations are device-local (localStorage only)
   useEffect(() => { writeStoredState('cni_rfid_readers', rfidReaders); }, [rfidReaders]);
-  useEffect(() => { writeStoredState('cni_active_reader', activeReaderId); }, [activeReaderId]);
+  useEffect(() => { writeStoredState('cni_workstations', workstations); }, [workstations]);
 
-  const addRFIDReader = (r: RFIDReaderConfig) => setRfidReaders(prev => [...prev, r]);
-  const updateRFIDReader = (r: RFIDReaderConfig) => setRfidReaders(prev => prev.map(x => x.id === r.id ? r : x));
+  // Auto-register this device as a workstation on first load, update lastSeen thereafter
+  useEffect(() => {
+    const now = new Date().toISOString();
+    setWorkstations(prev => {
+      const existing = prev.find(w => w.id === DEVICE_ID);
+      let next: WorkstationConfig[];
+      if (existing) {
+        next = prev.map(w => w.id === DEVICE_ID ? { ...w, lastSeen: now } : w);
+      } else {
+        next = [...prev, { id: DEVICE_ID, name: `สถานี ${prev.length + 1}`, readerId: '', lastSeen: now, createdAt: now }];
+      }
+      const updated = next.find(w => w.id === DEVICE_ID)!;
+      void upsertWorkstation(updated).catch(() => {/* non-critical */});
+      return next;
+    });
+  }, []);
+
+  const addRFIDReader = (r: RFIDReaderConfig) => {
+    setRfidReaders(prev => [...prev, r]);
+    void upsertRFIDReader(r).catch(err => console.error('Failed to sync rfid reader', err));
+  };
+  const updateRFIDReader = (r: RFIDReaderConfig) => {
+    setRfidReaders(prev => prev.map(x => x.id === r.id ? r : x));
+    void upsertRFIDReader(r).catch(err => console.error('Failed to sync rfid reader', err));
+  };
   const deleteRFIDReader = (id: string) => {
     setRfidReaders(prev => prev.filter(x => x.id !== id));
-    if (activeReaderId === id) setActiveReaderId('');
+    setWorkstations(prev => prev.map(w => w.readerId === id ? { ...w, readerId: '' } : w));
+    void deleteRFIDReaderRecord(id).catch(err => console.error('Failed to delete rfid reader', err));
   };
-  const setActiveReader = (id: string) => setActiveReaderId(id);
+  const setActiveReader = (id: string) =>
+    setWorkstations(prev => prev.map(w => w.id === DEVICE_ID ? { ...w, readerId: id } : w));
+  const updateWorkstation = (w: WorkstationConfig) => {
+    setWorkstations(prev => prev.map(x => x.id === w.id ? w : x));
+    void upsertWorkstation(w).catch(err => console.error('Failed to sync workstation', err));
+  };
+  const deleteWorkstation = (id: string) => {
+    setWorkstations(prev => prev.filter(x => x.id !== id));
+    void deleteWorkstationRecord(id).catch(err => console.error('Failed to delete workstation', err));
+  };
 
   const addToast = (t: Omit<Toast, 'id'>) => {
     const id = Date.now().toString();
@@ -452,6 +509,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       remoteLoaded,
       rfidReaders,
       activeReaderId,
+      workstations,
+      deviceId: DEVICE_ID,
       addLostReport,
       addFoundReport,
       updateLostReport,
@@ -470,6 +529,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       updateRFIDReader,
       deleteRFIDReader,
       setActiveReader,
+      updateWorkstation,
+      deleteWorkstation,
       addToast,
       removeToast,
       addAuditLog,

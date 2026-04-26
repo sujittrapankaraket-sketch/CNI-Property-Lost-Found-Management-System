@@ -1,4 +1,4 @@
-import type { AuditLog, Area, FoundReport, LostReport, PermissionMap, PropertyCategory, StorageLocation, SystemSettings, User, UserGroup } from '../types';
+import type { AuditLog, Area, FoundReport, LostReport, PermissionMap, PropertyCategory, RFIDReaderConfig, StorageLocation, SystemSettings, User, UserGroup, WorkstationConfig } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 // ── row types ──────────────────────────────────────────────────────────────
@@ -427,5 +427,58 @@ export async function deleteStorageLocationRecord(id: string): Promise<void> {
   if (!canUseRemoteDataStore) return;
   const client = requireSupabase();
   const { error } = await client.from('storage_locations').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── rfid readers ───────────────────────────────────────────────────────────
+
+export async function upsertRFIDReader(reader: RFIDReaderConfig): Promise<void> {
+  if (!canUseRemoteDataStore) return;
+  const client = requireSupabase();
+  const { error } = await client.from('rfid_readers').upsert({
+    id:              reader.id,
+    name:            reader.name,
+    area_id:         reader.areaId || null,
+    connection_type: reader.connectionType,
+    serial_port:     reader.serialPort ?? null,
+    baud_rate:       reader.baudRate ?? null,
+    ip_address:      reader.ipAddress ?? null,
+    tcp_port:        reader.tcpPort ?? null,
+    bluetooth_name:  reader.bluetoothName ?? null,
+    tag_prefix:      reader.tagPrefix ?? '',
+    tag_suffix:      reader.tagSuffix ?? '',
+    is_active:       reader.isActive,
+    note:            reader.note ?? '',
+    created_at:      reader.createdAt,
+  });
+  if (error) throw error;
+}
+
+export async function deleteRFIDReaderRecord(id: string): Promise<void> {
+  if (!canUseRemoteDataStore) return;
+  const client = requireSupabase();
+  const { error } = await client.from('rfid_readers').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── workstations ───────────────────────────────────────────────────────────
+
+export async function upsertWorkstation(ws: WorkstationConfig): Promise<void> {
+  if (!canUseRemoteDataStore) return;
+  const client = requireSupabase();
+  const { error } = await client.from('workstations').upsert({
+    id:         ws.id,
+    name:       ws.name,
+    reader_id:  ws.readerId || null,
+    last_seen:  ws.lastSeen,
+    created_at: ws.createdAt,
+  });
+  if (error) throw error;
+}
+
+export async function deleteWorkstationRecord(id: string): Promise<void> {
+  if (!canUseRemoteDataStore) return;
+  const client = requireSupabase();
+  const { error } = await client.from('workstations').delete().eq('id', id);
   if (error) throw error;
 }
