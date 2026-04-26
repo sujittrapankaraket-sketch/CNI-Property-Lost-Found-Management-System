@@ -152,6 +152,10 @@ function readStoredState<T>(key: string, fallback: T): T {
   }
 }
 
+function writeStoredState(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota / private browsing — skip cache */ }
+}
+
 interface DataContextType {
   lostReports: LostReport[];
   foundReports: FoundReport[];
@@ -284,15 +288,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // localStorage เป็น cache สำหรับ offline / local-only mode
   // เมื่อใช้ Supabase ก็ยังเขียน localStorage ไว้เป็น fast-cache ระหว่าง reload
   useEffect(() => {
-    if (remoteLoaded) localStorage.setItem(STORAGE_KEYS.lostReports, JSON.stringify(lostReports));
+    if (remoteLoaded) writeStoredState(STORAGE_KEYS.lostReports, lostReports);
   }, [lostReports, remoteLoaded]);
 
   useEffect(() => {
-    if (remoteLoaded) localStorage.setItem(STORAGE_KEYS.foundReports, JSON.stringify(foundReports));
+    if (remoteLoaded) writeStoredState(STORAGE_KEYS.foundReports, foundReports);
   }, [foundReports, remoteLoaded]);
 
   useEffect(() => {
-    if (remoteLoaded) localStorage.setItem(STORAGE_KEYS.auditLogs, JSON.stringify(auditLogs));
+    if (remoteLoaded) writeStoredState(STORAGE_KEYS.auditLogs, auditLogs);
   }, [auditLogs, remoteLoaded]);
 
   const addToast = (t: Omit<Toast, 'id'>) => {
