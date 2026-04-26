@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { Component, useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext';
@@ -7,6 +7,24 @@ import type { PermissionMap } from './types';
 import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
 import ToastContainer from './components/shared/ToastContainer';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center bg-gray-50 flex-col gap-4 p-6 text-center" style={{ height: '100dvh' }}>
+          <div className="text-4xl">⚠️</div>
+          <h2 className="text-lg font-bold text-gray-900">เกิดข้อผิดพลาด</h2>
+          <p className="text-sm text-gray-500 max-w-sm">กรุณารีเฟรชหน้าเว็บ หากยังพบปัญหา กรุณาติดต่อผู้ดูแลระบบ</p>
+          <button onClick={() => window.location.reload()} className="btn-primary text-sm">รีเฟรชหน้าเว็บ</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -26,7 +44,7 @@ function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex overflow-hidden bg-gray-50" style={{ height: '100dvh' }}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar onMenuClick={() => setSidebarOpen(v => !v)} />
@@ -55,9 +73,12 @@ function DataLoadingGate({ children }: { children: ReactNode }) {
   const { remoteLoaded } = useData();
   if (!remoteLoaded) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50 flex-col gap-4">
-        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-gray-500">กำลังโหลดข้อมูลจาก Supabase…</p>
+      <div className="flex items-center justify-center bg-gray-50 flex-col gap-4" style={{ height: '100dvh' }}>
+        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <p className="text-sm font-medium text-gray-700">กำลังโหลดข้อมูล…</p>
+          <p className="text-xs text-gray-400 mt-1">กำลังเชื่อมต่อ Supabase</p>
+        </div>
       </div>
     );
   }
@@ -66,19 +87,21 @@ function DataLoadingGate({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <DataProvider>
-          {canUseRemoteDataStore ? (
-            <DataLoadingGate>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <DataProvider>
+            {canUseRemoteDataStore ? (
+              <DataLoadingGate>
+                <AppRoutes />
+              </DataLoadingGate>
+            ) : (
               <AppRoutes />
-            </DataLoadingGate>
-          ) : (
-            <AppRoutes />
-          )}
-        </DataProvider>
-      </AuthProvider>
-    </BrowserRouter>
+            )}
+          </DataProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

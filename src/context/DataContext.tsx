@@ -233,7 +233,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!canUseRemoteDataStore) return;
 
     let cancelled = false;
-    loadRemoteAppState()
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Supabase load timeout')), 10000)
+    );
+    Promise.race([loadRemoteAppState(), timeout])
       .then(state => {
         if (cancelled) return;
         if (!state) {
