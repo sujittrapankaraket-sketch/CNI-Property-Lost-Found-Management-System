@@ -246,8 +246,8 @@ export default function LostReportForm() {
           {step === 3 && (
             <div className="card p-6 space-y-4">
               <h3 className="font-semibold text-gray-900">ข้อมูลผู้แจ้ง</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
                   <label className="form-label">ชื่อ-นามสกุล <span className="text-red-500">*</span></label>
                   <input {...register('reporterName', { required: 'กรุณากรอกชื่อ' })} className="form-input" placeholder="ชื่อ-นามสกุล" />
                   {errors.reporterName && <p className="text-xs text-red-500 mt-1">{errors.reporterName.message}</p>}

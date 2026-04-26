@@ -24,20 +24,31 @@ interface FoundIntakeEmailContext {
 }
 
 export function buildGmailComposeUrl({ to, subject, body }: EmailDraft) {
-  const params = new URLSearchParams({
-    view: 'cm',
-    fs: '1',
-    to,
-    su: subject,
-    body,
-  });
-
+  const params = new URLSearchParams({ view: 'cm', fs: '1', to, su: subject, body });
   return `https://mail.google.com/mail/?${params.toString()}`;
 }
 
-export function openGmailCompose(draft: EmailDraft) {
+// mailto: เปิด Gmail App / email app ที่ผูก Google account บนเครื่อง (iOS / Android / Desktop)
+export function buildMailtoUrl({ to, subject, body }: EmailDraft): string {
+  const params = new URLSearchParams({ subject, body });
+  return `mailto:${encodeURIComponent(to)}?${params.toString()}`;
+}
+
+// เปิด Gmail Web ใน tab ใหม่ (desktop-friendly)
+export function openGmailCompose(draft: EmailDraft): boolean {
   if (!draft.to.trim()) return false;
   window.open(buildGmailComposeUrl(draft), '_blank', 'noopener,noreferrer');
+  return true;
+}
+
+// เปิด email app ที่เชื่อมกับ Google account บนเครื่อง (mobile-friendly)
+export function openMailtoCompose(draft: EmailDraft): boolean {
+  if (!draft.to.trim()) return false;
+  const a = document.createElement('a');
+  a.href = buildMailtoUrl(draft);
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
   return true;
 }
 

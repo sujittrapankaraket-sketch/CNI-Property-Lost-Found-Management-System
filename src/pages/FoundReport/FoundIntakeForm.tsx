@@ -6,7 +6,7 @@ import PageWrapper from '../../components/layout/PageWrapper';
 import SignaturePad from '../../components/ui/SignaturePad';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { buildFoundIntakeReceiptEmail, openGmailCompose } from '../../utils/gmail';
+import { buildFoundIntakeReceiptEmail, openGmailCompose, openMailtoCompose } from '../../utils/gmail';
 
 export default function FoundIntakeForm() {
   const { id } = useParams();
@@ -62,6 +62,40 @@ export default function FoundIntakeForm() {
       }
     >
       <div className="max-w-3xl mx-auto">
+        {(() => {
+          const draft = buildFoundIntakeReceiptEmail({ found: report, category: cat, area, storageName: storage?.name });
+          return (
+            <div className="card p-4 mb-4 space-y-3 border border-blue-100 bg-blue-50/30 no-print">
+              <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm">
+                <Mail size={14} /> ส่งใบยืนยันให้ผู้นำส่ง
+              </div>
+              <div className="text-xs text-gray-600 space-y-1">
+                <div><span className="text-gray-400">ถึง:</span> <span className="font-medium break-all">{draft.to || 'ไม่มีอีเมลผู้นำส่ง'}</span></div>
+                <div className="truncate"><span className="text-gray-400">เรื่อง:</span> {draft.subject}</div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const ok = openMailtoCompose(draft);
+                    if (!ok) { addToast({ type: 'warning', title: 'ไม่มีอีเมลผู้นำส่ง' }); return; }
+                    addAuditLog({ userId: user?.id ?? '', username: user?.username ?? '', action: 'EMAIL_RECEIPT', module: 'Found Report', detail: `ส่งใบยืนยันนำส่งทรัพย์สิน ${report.foundCode}`, timestamp: new Date().toISOString(), ipAddress: '192.168.1.100' });
+                    addToast({ type: 'success', title: 'เปิดแอปอีเมลแล้ว', message: `ผู้รับ: ${draft.to}` });
+                  }}
+                  className="btn-primary flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5"
+                >
+                  <Mail size={11} /> ส่งจากเครื่อง
+                </button>
+                <button
+                  onClick={handleEmail}
+                  className="btn-secondary flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5"
+                >
+                  Gmail Web
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="card p-8 space-y-6 print:shadow-none print:border-0">
           <div className="text-center border-b border-gray-100 pb-6">
             <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center mx-auto mb-3">

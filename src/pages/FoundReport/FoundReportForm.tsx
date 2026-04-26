@@ -9,7 +9,7 @@ import SignaturePad from '../../components/ui/SignaturePad';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import { formValidations } from '../../utils/validations';
-import { buildClaimResponseUrl, buildLostReporterMatchEmail, openGmailCompose } from '../../utils/gmail';
+import { buildClaimResponseUrl, buildLostReporterMatchEmail, openGmailCompose, openMailtoCompose } from '../../utils/gmail';
 import type { FoundReport, LostReport } from '../../types';
 
 interface FormData {
@@ -195,25 +195,52 @@ export default function FoundReportForm() {
             </div>
           </div>
           <div className="space-y-3">
-            {matches.map(m => (
-              <div key={m.id} className="border border-amber-200 rounded-xl p-4 bg-amber-50/50">
-                <div className="flex items-start justify-between gap-3">
+            {matches.map(m => {
+              const draft = done ? buildLostReporterMatchEmail({
+                found: done,
+                lost: m,
+                category: masterData.categories.find(c => c.id === done.categoryId),
+                area: masterData.areas.find(a => a.id === done.foundAreaId),
+                claimUrl: buildClaimResponseUrl(done.id, m.id),
+              }) : null;
+              return (
+                <div key={m.id} className="border border-amber-200 rounded-xl p-4 bg-amber-50/50 space-y-3">
                   <div className="min-w-0">
                     <div className="font-mono text-xs font-semibold text-primary mb-1">{m.trackingNo}</div>
                     <div className="text-sm text-gray-700">{m.description}</div>
                     <div className="text-xs text-gray-500 mt-1">
-                      {m.reporter.name} · {m.reporter.nationality || '-'} · {m.reporter.phone} · {m.reporter.email || 'ไม่มีอีเมล'}
+                      {m.reporter.name} · {m.reporter.nationality || '-'} · {m.reporter.phone}
                     </div>
                   </div>
-                  <button
-                    onClick={() => sendLostReporterEmail(m)}
-                    className="btn-secondary text-xs px-3 py-2 flex items-center gap-1 flex-shrink-0"
-                  >
-                    <Mail size={13} /> Gmail
-                  </button>
+                  {/* Email draft — แสดงอัตโนมัติ */}
+                  {draft && (
+                    <div className="border border-blue-100 rounded-lg p-3 bg-white space-y-2">
+                      <div className="flex items-center gap-1.5 text-blue-700 text-xs font-semibold">
+                        <Mail size={12} /> ร่างอีเมลแจ้งผู้แจ้งสูญหาย
+                      </div>
+                      <div className="text-xs text-gray-600 space-y-0.5">
+                        <div><span className="text-gray-400">ถึง:</span> <span className="font-medium">{draft.to || 'ไม่มีอีเมล'}</span></div>
+                        <div className="truncate"><span className="text-gray-400">เรื่อง:</span> {draft.subject}</div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => openMailtoCompose(draft) || addToast({ type: 'warning', title: 'ไม่มีอีเมลผู้แจ้งสูญหาย', message: m.trackingNo })}
+                          className="btn-primary flex-1 flex items-center justify-center gap-1 text-xs py-1.5"
+                        >
+                          <Mail size={11} /> ส่งจากเครื่อง
+                        </button>
+                        <button
+                          onClick={() => sendLostReporterEmail(m)}
+                          className="btn-secondary flex-1 flex items-center justify-center gap-1 text-xs py-1.5"
+                        >
+                          Gmail Web
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="flex gap-3 mt-4">
             <button onClick={() => setShowMatch(false)} className="btn-secondary flex-1">ปิด</button>
@@ -372,7 +399,7 @@ export default function FoundReportForm() {
                 <input {...register('finderName', { required: 'กรุณากรอกชื่อ' })} className="form-input" />
                 {errors.finderName && <p className="text-xs text-red-500 mt-1">{errors.finderName.message}</p>}
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="form-label">สัญชาติ</label>
                   <select {...register('finderNationality')} className="form-input">

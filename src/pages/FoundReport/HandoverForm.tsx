@@ -8,7 +8,7 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import SignaturePad from '../../components/ui/SignaturePad';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { buildClaimResponseUrl, buildLostReporterMatchEmail, openGmailCompose } from '../../utils/gmail';
+import { buildClaimResponseUrl, buildLostReporterMatchEmail, openGmailCompose, openMailtoCompose } from '../../utils/gmail';
 
 export default function HandoverForm() {
   const { id } = useParams();
@@ -130,6 +130,39 @@ export default function HandoverForm() {
               </button>
             )}
           </div>
+
+          {/* Email draft — แสดงอัตโนมัติเมื่อมีการจับคู่ */}
+          {matchedLost && !isReturned && (() => {
+            const draft = buildLostReporterMatchEmail({
+              found: report, lost: matchedLost, category: cat, area, appointment: appointmentText,
+              claimUrl: buildClaimResponseUrl(report.id, matchedLost.id),
+            });
+            return (
+              <div className="card p-4 space-y-3 border border-blue-100 bg-blue-50/30">
+                <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm">
+                  <Mail size={14} /> ร่างอีเมลแจ้งผู้แจ้งสูญหาย
+                </div>
+                <div className="text-xs text-gray-600 space-y-1">
+                  <div><span className="text-gray-400">ถึง:</span> <span className="font-medium break-all">{draft.to || 'ไม่มีอีเมล'}</span></div>
+                  <div className="truncate"><span className="text-gray-400">เรื่อง:</span> {draft.subject}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => openMailtoCompose(draft) || addToast({ type: 'warning', title: 'ไม่มีอีเมลผู้แจ้งสูญหาย' })}
+                    className="btn-primary flex-1 flex items-center justify-center gap-1 text-xs py-1.5"
+                  >
+                    <Mail size={11} /> ส่งจากเครื่อง
+                  </button>
+                  <button
+                    onClick={sendLostReporterEmail}
+                    className="btn-secondary flex-1 flex items-center justify-center gap-1 text-xs py-1.5"
+                  >
+                    Gmail Web
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="card p-5 space-y-3">
             <h2 className="font-semibold text-gray-900">สถานะเอกสาร</h2>

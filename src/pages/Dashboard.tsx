@@ -152,26 +152,29 @@ export default function Dashboard() {
       </div>
 
       {/* Return status strip */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <div className="flex items-center gap-3 bg-green-50 border border-green-100 rounded-xl px-4 py-3">
-          <CheckCircle2 size={18} className="text-green-500 flex-shrink-0" />
-          <div>
-            <div className="text-lg font-bold text-green-700 tabular-nums">{returned}</div>
-            <div className="text-xs text-green-600">ส่งคืนแล้ว</div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6">
+        <div className="flex items-center gap-2 sm:gap-3 bg-green-50 border border-green-100 rounded-xl px-3 sm:px-4 py-3">
+          <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />
+          <div className="min-w-0">
+            <div className="text-base sm:text-lg font-bold text-green-700 tabular-nums">{returned}</div>
+            <div className="text-[10px] sm:text-xs text-green-600 truncate">ส่งคืนแล้ว</div>
           </div>
         </div>
-        <div className="flex items-center gap-3 bg-purple-50 border border-purple-100 rounded-xl px-4 py-3">
-          <Clock size={18} className="text-purple-500 flex-shrink-0" />
-          <div>
-            <div className="text-lg font-bold text-purple-700 tabular-nums">{pendingReturn}</div>
-            <div className="text-xs text-purple-600">รอส่งคืน</div>
+        <div className="flex items-center gap-2 sm:gap-3 bg-purple-50 border border-purple-100 rounded-xl px-3 sm:px-4 py-3">
+          <Clock size={16} className="text-purple-500 flex-shrink-0" />
+          <div className="min-w-0">
+            <div className="text-base sm:text-lg font-bold text-purple-700 tabular-nums">{pendingReturn}</div>
+            <div className="text-[10px] sm:text-xs text-purple-600 truncate">รอส่งคืน</div>
           </div>
         </div>
-        <div className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-          <Trash2 size={18} className="text-red-400 flex-shrink-0" />
-          <div>
-            <div className="text-lg font-bold text-red-600 tabular-nums">{expired}</div>
-            <div className="text-xs text-red-500">หมดอายุ / รอทำลาย</div>
+        <div className="flex items-center gap-2 sm:gap-3 bg-red-50 border border-red-100 rounded-xl px-3 sm:px-4 py-3">
+          <Trash2 size={16} className="text-red-400 flex-shrink-0" />
+          <div className="min-w-0">
+            <div className="text-base sm:text-lg font-bold text-red-600 tabular-nums">{expired}</div>
+            <div className="text-[10px] sm:text-xs text-red-500">
+              <span className="sm:hidden">หมดอายุ</span>
+              <span className="hidden sm:inline">หมดอายุ / รอทำลาย</span>
+            </div>
           </div>
         </div>
       </div>
@@ -191,7 +194,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 no-print">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 no-print">
               <div>
                 <label className="form-label text-xs">วันที่เริ่มต้น</label>
                 <input type="date" value={chartFrom} onChange={e => setChartFrom(e.target.value)} className="form-input py-2" />

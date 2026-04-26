@@ -8,7 +8,7 @@ import StatusBadge from '../../components/ui/StatusBadge';
 import Modal from '../../components/ui/Modal';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { buildClaimResponseUrl, buildLostReporterMatchEmail, openGmailCompose } from '../../utils/gmail';
+import { buildClaimResponseUrl, buildLostReporterMatchEmail, openGmailCompose, openMailtoCompose } from '../../utils/gmail';
 import type { LostReport, FoundReport } from '../../types';
 
 export default function SearchMatch() {
@@ -297,40 +297,70 @@ export default function SearchMatch() {
       </Modal>
 
       <Modal open={!!matchedPair} onClose={() => setMatchedPair(null)} title="จับคู่สำเร็จ" size="md">
-        {matchedPair && (
-          <div className="space-y-4">
-            <div className="bg-green-50 border border-green-100 rounded-xl p-4">
-              <div className="flex items-center gap-2 text-green-700 font-semibold mb-2">
-                <CheckCircle2 size={16} /> พร้อมแจ้งผู้แจ้งสูญหายและนัดคืนทรัพย์สิน
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-white rounded-lg p-3">
-                  <div className="text-xs text-gray-400 mb-1">รายการสูญหาย</div>
-                  <div className="font-mono text-primary font-bold">{matchedPair.lost.trackingNo}</div>
-                  <div className="text-xs text-gray-500 truncate">
-                    {matchedPair.lost.reporter.name} · {matchedPair.lost.reporter.nationality || '-'}
+        {matchedPair && (() => {
+          const draft = buildLostReporterMatchEmail({
+            found: matchedPair.found,
+            lost: matchedPair.lost,
+            category: masterData.categories.find(c => c.id === matchedPair.found.categoryId),
+            area: masterData.areas.find(a => a.id === matchedPair.found.foundAreaId),
+            claimUrl: buildClaimResponseUrl(matchedPair.found.id, matchedPair.lost.id),
+          });
+          return (
+            <div className="space-y-4">
+              <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+                <div className="flex items-center gap-2 text-green-700 font-semibold mb-2">
+                  <CheckCircle2 size={16} /> พร้อมแจ้งผู้แจ้งสูญหายและนัดคืนทรัพย์สิน
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="bg-white rounded-lg p-3">
+                    <div className="text-xs text-gray-400 mb-1">รายการสูญหาย</div>
+                    <div className="font-mono text-primary font-bold">{matchedPair.lost.trackingNo}</div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {matchedPair.lost.reporter.name} · {matchedPair.lost.reporter.nationality || '-'}
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg p-3">
+                    <div className="text-xs text-gray-400 mb-1">ทรัพย์สินที่พบ</div>
+                    <div className="font-mono text-blue-600 font-bold">{matchedPair.found.foundCode}</div>
+                    <div className="text-xs text-gray-500 truncate">{matchedPair.found.finder.name}</div>
                   </div>
                 </div>
-                <div className="bg-white rounded-lg p-3">
-                  <div className="text-xs text-gray-400 mb-1">ทรัพย์สินที่พบ</div>
-                  <div className="font-mono text-blue-600 font-bold">{matchedPair.found.foundCode}</div>
-                  <div className="text-xs text-gray-500 truncate">{matchedPair.found.finder.name}</div>
+              </div>
+
+              {/* Email draft — แสดงอัตโนมัติ */}
+              <div className="border border-blue-100 rounded-xl p-4 bg-blue-50/50 space-y-2">
+                <div className="flex items-center gap-2 text-blue-700 font-semibold text-sm">
+                  <Mail size={14} /> ร่างอีเมลแจ้งผู้แจ้งสูญหาย
+                </div>
+                <div className="text-xs text-gray-600 space-y-1">
+                  <div><span className="text-gray-400 w-12 inline-block">ถึง:</span> <span className="font-medium">{draft.to || '—'}</span></div>
+                  <div><span className="text-gray-400 w-12 inline-block">เรื่อง:</span> <span className="truncate block">{draft.subject}</span></div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => openMailtoCompose(draft) || addToast({ type: 'warning', title: 'ไม่มีอีเมลผู้แจ้งสูญหาย' })}
+                    className="btn-primary flex-1 flex items-center justify-center gap-1.5 text-xs py-2"
+                  >
+                    <Mail size={13} /> ส่งจากเครื่อง (Gmail App)
+                  </button>
+                  <button
+                    onClick={() => openGmailCompose(draft) || addToast({ type: 'warning', title: 'ไม่มีอีเมลผู้แจ้งสูญหาย' })}
+                    className="btn-secondary flex-1 flex items-center justify-center gap-1.5 text-xs py-2"
+                  >
+                    Gmail Web
+                  </button>
                 </div>
               </div>
+
+              <button
+                onClick={() => navigate(`/found/${matchedPair.found.id}/handover`)}
+                className="btn-primary w-full flex items-center justify-center gap-2 text-sm"
+              >
+                <FileSignature size={16} /> สร้างฟอร์มนัดคืนและเอกสารลงลายเซ็น
+              </button>
             </div>
-
-            <button onClick={sendLostReporterEmail} className="btn-secondary w-full flex items-center justify-center gap-2 text-sm">
-              <Mail size={15} /> Gmail ผู้แจ้งสูญหาย
-            </button>
-
-            <button
-              onClick={() => navigate(`/found/${matchedPair.found.id}/handover`)}
-              className="btn-primary w-full flex items-center justify-center gap-2 text-sm"
-            >
-              <FileSignature size={16} /> สร้างฟอร์มนัดคืนและเอกสารลงลายเซ็น
-            </button>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
     </PageWrapper>
   );
