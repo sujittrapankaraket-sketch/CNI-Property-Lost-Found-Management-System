@@ -1,4 +1,4 @@
-import type { AuditLog, Area, FoundReport, LostReport, PermissionMap, PropertyCategory, StorageLocation, SystemSettings, User } from '../types';
+import type { AuditLog, Area, FoundReport, LostReport, PermissionMap, PropertyCategory, StorageLocation, SystemSettings, User, UserGroup } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 // ── row types ──────────────────────────────────────────────────────────────
@@ -377,5 +377,55 @@ export async function deleteUserRecord(id: string) {
   if (!canUseRemoteDataStore) return;
   const client = requireSupabase();
   const { error } = await client.from('users').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── user groups ────────────────────────────────────────────────────────────
+
+type UserGroupRow = {
+  id: string;
+  name: string;
+  permissions: PermissionMap;
+  created_at: string;
+};
+
+const toUserGroup = (row: UserGroupRow): UserGroup => ({
+  id: row.id,
+  name: row.name,
+  permissions: row.permissions,
+});
+
+export async function loadUserGroups(): Promise<UserGroup[] | null> {
+  if (!canUseRemoteDataStore) return null;
+  const client = requireSupabase();
+  const { data, error } = await client.from('user_groups').select('*').order('created_at', { ascending: true });
+  if (error) return null;
+  return ((data ?? []) as UserGroupRow[]).map(toUserGroup);
+}
+
+export async function upsertUserGroup(group: UserGroup): Promise<void> {
+  if (!canUseRemoteDataStore) return;
+  const client = requireSupabase();
+  const { error } = await client.from('user_groups').upsert({
+    id: group.id,
+    name: group.name,
+    permissions: group.permissions,
+  });
+  if (error) throw error;
+}
+
+export async function deleteUserGroup(id: string): Promise<void> {
+  if (!canUseRemoteDataStore) return;
+  const client = requireSupabase();
+  const { error } = await client.from('user_groups').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── storage locations (delete) ─────────────────────────────────────────────
+
+export async function deleteStorageLocationRecord(id: string): Promise<void> {
+  if (!canUseRemoteDataStore) return;
+  const client = requireSupabase();
+  const { error } = await client.from('storage_locations').delete().eq('id', id);
   if (error) throw error;
 }

@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { Users, Database, ClipboardList, Settings, Plus, Pencil, Trash2, Shield, Clock } from 'lucide-react';
+import { Users, Database, ClipboardList, Settings, Plus, Pencil, Trash2, Shield, Clock, UsersRound, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import PageWrapper from '../../components/layout/PageWrapper';
 import Modal from '../../components/ui/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import type { User, PropertyCategory, Area } from '../../types';
+import type { User, UserGroup, PropertyCategory, Area, StorageLocation } from '../../types';
 
-type Tab = 'users' | 'master' | 'audit' | 'settings';
+type Tab = 'users' | 'groups' | 'master' | 'audit' | 'settings';
 
 const DEFAULT_PERMS = {
   lost_report: true, found_report: true, search_match: true,
@@ -16,92 +16,130 @@ const DEFAULT_PERMS = {
 };
 
 export default function Admin() {
-  const { getUsers, updateUser, addUser, deleteUser, settings, updateSettings } = useAuth();
-  const { masterData, addCategory, updateCategory, deleteCategory, addArea, updateArea, deleteArea, addStorageLocation, auditLogs } = useData();
+  const { getUsers, updateUser, addUser, deleteUser, getGroups, addGroup, updateGroup, deleteGroup, settings, updateSettings } = useAuth();
+  const { masterData, addCategory, updateCategory, deleteCategory, addArea, updateArea, deleteArea, addStorageLocation, updateStorageLocation, deleteStorageLocation, auditLogs } = useData();
   const [tab, setTab] = useState<Tab>('users');
+
+  // ── user state ────────────────────────────────────────────────────────────
   const [userModal, setUserModal] = useState(false);
-  const [catModal, setCatModal] = useState(false);
-  const [areaModal, setAreaModal] = useState(false);
-  const [editUser, setEditUser] = useState<User | null>(null);
-  const [editCat, setEditCat] = useState<PropertyCategory | null>(null);
-  const [editArea, setEditArea] = useState<Area | null>(null);
-  const [auditSearch, setAuditSearch] = useState('');
-  const [sessionMin, setSessionMin] = useState(settings.sessionTimeoutMinutes);
+  const [editUser, setEditUser]   = useState<User | null>(null);
+  const [uForm, setUForm]         = useState({ username: '', fullName: '', password: '', role: 'staff' as User['role'], groupId: 'g2', permissions: DEFAULT_PERMS });
 
-  const users = getUsers();
-
-  // User form state
-  const [uForm, setUForm] = useState({ username: '', fullName: '', password: '', role: 'staff' as User['role'], permissions: DEFAULT_PERMS });
+  const users  = getUsers();
+  const groups = getGroups();
 
   const openNewUser = () => {
     setEditUser(null);
-    setUForm({ username: '', fullName: '', password: '', role: 'staff', permissions: DEFAULT_PERMS });
+    setUForm({ username: '', fullName: '', password: '', role: 'staff', groupId: 'g2', permissions: DEFAULT_PERMS });
     setUserModal(true);
   };
-
   const openEditUser = (u: User) => {
     setEditUser(u);
-    setUForm({ username: u.username, fullName: u.fullName, password: '', role: u.role, permissions: u.permissions });
+    setUForm({ username: u.username, fullName: u.fullName, password: '', role: u.role, groupId: u.groupId || 'g2', permissions: u.permissions });
     setUserModal(true);
   };
-
   const saveUser = () => {
     if (editUser) {
       updateUser({ ...editUser, ...uForm });
     } else {
-      addUser({
-        id: Date.now().toString(),
-        ...uForm,
-        groupId: 'g2',
-        isActive: true,
-        createdAt: new Date().toISOString().split('T')[0],
-      });
+      addUser({ id: Date.now().toString(), ...uForm, isActive: true, createdAt: new Date().toISOString().split('T')[0] });
     }
     setUserModal(false);
   };
+  const applyGroupPerms = (groupId: string) => {
+    const g = groups.find(x => x.id === groupId);
+    if (g) setUForm(f => ({ ...f, groupId, permissions: { ...g.permissions } }));
+  };
 
-  // Category form
-  const [cForm, setCForm] = useState({ name: '', nameEn: '', retentionDays: 365, icon: '📦' });
-  const openNewCat = () => { setEditCat(null); setCForm({ name: '', nameEn: '', retentionDays: 365, icon: '📦' }); setCatModal(true); };
+  // ── group state (TOR 4.9.1.2, 4.9.1.3) ───────────────────────────────────
+  const [groupModal, setGroupModal] = useState(false);
+  const [editGroup, setEditGroup]   = useState<UserGroup | null>(null);
+  const [gForm, setGForm]           = useState({ name: '', permissions: DEFAULT_PERMS });
+
+  const openNewGroup  = () => { setEditGroup(null); setGForm({ name: '', permissions: DEFAULT_PERMS }); setGroupModal(true); };
+  const openEditGroup = (g: UserGroup) => { setEditGroup(g); setGForm({ name: g.name, permissions: g.permissions }); setGroupModal(true); };
+  const saveGroup     = () => {
+    const data = { ...gForm, id: editGroup?.id ?? Date.now().toString() };
+    editGroup ? updateGroup(data) : addGroup(data);
+    setGroupModal(false);
+  };
+
+  // ── category state ────────────────────────────────────────────────────────
+  const [catModal, setCatModal] = useState(false);
+  const [editCat,  setEditCat]  = useState<PropertyCategory | null>(null);
+  const [cForm,    setCForm]    = useState({ name: '', nameEn: '', retentionDays: 365, icon: '📦' });
+
+  const openNewCat  = () => { setEditCat(null); setCForm({ name: '', nameEn: '', retentionDays: 365, icon: '📦' }); setCatModal(true); };
   const openEditCat = (c: PropertyCategory) => { setEditCat(c); setCForm({ name: c.name, nameEn: c.nameEn, retentionDays: c.retentionDays, icon: c.icon }); setCatModal(true); };
-  const saveCat = () => {
+  const saveCat     = () => {
     const data = { ...cForm, id: editCat?.id ?? Date.now().toString() };
     editCat ? updateCategory(data) : addCategory(data);
     setCatModal(false);
   };
 
-  // Area form
-  const [aForm, setAForm] = useState({ name: '', floor: '', zone: '' });
-  const openNewArea = () => { setEditArea(null); setAForm({ name: '', floor: '', zone: '' }); setAreaModal(true); };
+  // ── area state ────────────────────────────────────────────────────────────
+  const [areaModal, setAreaModal] = useState(false);
+  const [editArea,  setEditArea]  = useState<Area | null>(null);
+  const [aForm,     setAForm]     = useState({ name: '', floor: '', zone: '' });
+
+  const openNewArea  = () => { setEditArea(null); setAForm({ name: '', floor: '', zone: '' }); setAreaModal(true); };
   const openEditArea = (a: Area) => { setEditArea(a); setAForm({ name: a.name, floor: a.floor, zone: a.zone }); setAreaModal(true); };
-  const saveArea = () => {
+  const saveArea     = () => {
     const data = { ...aForm, id: editArea?.id ?? Date.now().toString() };
     editArea ? updateArea(data) : addArea(data);
     setAreaModal(false);
   };
 
-  const filteredLogs = auditLogs.filter(l =>
-    !auditSearch || l.username.includes(auditSearch) || l.module.includes(auditSearch) || l.action.includes(auditSearch)
-  );
+  // ── storage location state (TOR 4.9.2.4) ─────────────────────────────────
+  const [storageModal, setStorageModal] = useState(false);
+  const [editStorage,  setEditStorage]  = useState<StorageLocation | null>(null);
+  const [slForm,       setSlForm]       = useState({ name: '', capacity: 20 });
+
+  const openNewStorage  = () => { setEditStorage(null); setSlForm({ name: '', capacity: 20 }); setStorageModal(true); };
+  const openEditStorage = (s: StorageLocation) => { setEditStorage(s); setSlForm({ name: s.name, capacity: s.capacity }); setStorageModal(true); };
+  const saveStorage     = () => {
+    const data = { ...slForm, id: editStorage?.id ?? Date.now().toString() };
+    editStorage ? updateStorageLocation(data) : addStorageLocation(data);
+    setStorageModal(false);
+  };
+
+  // ── audit state (TOR 4.9.1.5) ────────────────────────────────────────────
+  const [auditSearch,   setAuditSearch]   = useState('');
+  const [auditDateFrom, setAuditDateFrom] = useState('');
+  const [auditDateTo,   setAuditDateTo]   = useState('');
+
+  const filteredLogs = auditLogs.filter(l => {
+    const q  = auditSearch.toLowerCase();
+    const ds = l.timestamp.split('T')[0];
+    return (!q || l.username.toLowerCase().includes(q) || l.module.toLowerCase().includes(q) || l.action.toLowerCase().includes(q))
+      && (!auditDateFrom || ds >= auditDateFrom)
+      && (!auditDateTo   || ds <= auditDateTo);
+  });
+
+  // ── settings state ────────────────────────────────────────────────────────
+  const [sessionMin, setSessionMin] = useState(settings.sessionTimeoutMinutes);
+
+  // ── shared label maps ─────────────────────────────────────────────────────
+  const PERM_LABELS: [keyof typeof DEFAULT_PERMS, string][] = [
+    ['lost_report',          'แจ้งสูญหาย'],
+    ['found_report',         'บันทึกหลงลืม'],
+    ['search_match',         'ค้นหา/จับคู่'],
+    ['property_management',  'จัดการทรัพย์สิน'],
+    ['reports',              'รายงาน'],
+    ['admin',                'ผู้ดูแลระบบ'],
+  ];
 
   const TABS = [
-    { key: 'users', label: 'ผู้ใช้งาน', icon: Users },
-    { key: 'master', label: 'ข้อมูลหลัก', icon: Database },
-    { key: 'audit', label: 'ประวัติการใช้งาน', icon: ClipboardList },
-    { key: 'settings', label: 'ตั้งค่าระบบ', icon: Settings },
+    { key: 'users',   label: 'ผู้ใช้งาน',       icon: Users         },
+    { key: 'groups',  label: 'กลุ่มผู้ใช้',      icon: UsersRound    },
+    { key: 'master',  label: 'ข้อมูลหลัก',       icon: Database      },
+    { key: 'audit',   label: 'ประวัติการใช้งาน', icon: ClipboardList },
+    { key: 'settings',label: 'ตั้งค่าระบบ',      icon: Settings      },
   ] as const;
-
-  const PERM_LABELS: [keyof typeof DEFAULT_PERMS, string][] = [
-    ['lost_report', 'แจ้งสูญหาย'],
-    ['found_report', 'บันทึกหลงลืม'],
-    ['search_match', 'ค้นหา/จับคู่'],
-    ['property_management', 'จัดการทรัพย์สิน'],
-    ['reports', 'รายงาน'],
-    ['admin', 'ผู้ดูแลระบบ'],
-  ];
 
   return (
     <PageWrapper title="ผู้ดูแลระบบ" subtitle="จัดการผู้ใช้งาน ข้อมูลหลัก และการตั้งค่าระบบ">
+
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-gray-100 overflow-x-auto">
         {TABS.map(t => {
@@ -120,7 +158,7 @@ export default function Admin() {
         })}
       </div>
 
-      {/* Users Tab */}
+      {/* ── Users Tab ──────────────────────────────────────────────────────── */}
       {tab === 'users' && (
         <div>
           <div className="flex justify-end mb-4">
@@ -135,7 +173,8 @@ export default function Admin() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">ชื่อผู้ใช้</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">ชื่อ-นามสกุล</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">บทบาท</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">สิทธิ์</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase hidden md:table-cell">กลุ่ม</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase hidden lg:table-cell">สิทธิ์</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">สถานะ</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">จัดการ</th>
                 </tr>
@@ -150,7 +189,10 @@ export default function Admin() {
                         {u.role === 'admin' ? 'Admin' : u.role === 'staff' ? 'Staff' : 'Viewer'}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-xs text-gray-500 hidden md:table-cell">
+                      {groups.find(g => g.id === u.groupId)?.name ?? '-'}
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
                       <div className="flex flex-wrap gap-1">
                         {PERM_LABELS.filter(([k]) => u.permissions[k]).map(([, label]) => (
                           <span key={label} className="text-[10px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded">{label}</span>
@@ -176,7 +218,45 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Master Data Tab */}
+      {/* ── Groups Tab (TOR 4.9.1.2, 4.9.1.3) ─────────────────────────────── */}
+      {tab === 'groups' && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-gray-500">กำหนดสิทธิ์รายกลุ่ม แล้วกำหนดให้ผู้ใช้แต่ละคนในแท็บ "ผู้ใช้งาน"</p>
+            <button onClick={openNewGroup} className="btn-primary flex items-center gap-2 text-sm">
+              <Plus size={15} /> เพิ่มกลุ่ม
+            </button>
+          </div>
+          <div className="space-y-3">
+            {groups.map(g => (
+              <div key={g.id} className="card p-4 flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Shield size={15} className="text-primary" />
+                    <span className="font-semibold text-gray-900 text-sm">{g.name}</span>
+                    <span className="text-xs text-gray-400">({users.filter(u => u.groupId === g.id).length} คน)</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {PERM_LABELS.map(([key, label]) => (
+                      <span key={key} className={`text-[10px] px-2 py-0.5 rounded-full ${
+                        g.permissions[key] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400 line-through'
+                      }`}>
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => openEditGroup(g)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><Pencil size={13} /></button>
+                  <button onClick={() => deleteGroup(g.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={13} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Master Data Tab ─────────────────────────────────────────────────── */}
       {tab === 'master' && (
         <div className="space-y-6">
           {/* Categories */}
@@ -191,7 +271,7 @@ export default function Admin() {
                   <div className="flex items-center gap-3">
                     <span className="text-xl">{c.icon}</span>
                     <div>
-                      <div className="text-sm font-medium text-gray-700">{c.name}</div>
+                      <div className="text-sm font-medium text-gray-700">{c.name} <span className="text-gray-400 text-xs">/ {c.nameEn}</span></div>
                       <div className="text-xs text-gray-400">อายุเก็บ: {c.retentionDays === 1 ? '24 ชม.' : `${c.retentionDays} วัน`}</div>
                     </div>
                   </div>
@@ -226,16 +306,23 @@ export default function Admin() {
             </div>
           </div>
 
-          {/* Storage Locations */}
+          {/* Storage Locations (TOR 4.9.2.4) — now with CRUD */}
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900">สถานที่จัดเก็บ</h3>
+              <button onClick={openNewStorage} className="btn-secondary text-sm flex items-center gap-2"><Plus size={14} /> เพิ่ม</button>
             </div>
             <div className="space-y-2">
               {masterData.storageLocations.map(s => (
                 <div key={s.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                  <div className="text-sm font-medium text-gray-700">{s.name}</div>
-                  <div className="text-xs text-gray-400">ความจุ: {s.capacity}</div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">{s.name}</div>
+                    <div className="text-xs text-gray-400">ความจุ: {s.capacity} ชิ้น</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => openEditStorage(s)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400"><Pencil size={13} /></button>
+                    <button onClick={() => deleteStorageLocation(s.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 size={13} /></button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -243,17 +330,27 @@ export default function Admin() {
         </div>
       )}
 
-      {/* Audit Log Tab */}
+      {/* ── Audit Log Tab (TOR 4.9.1.5) ────────────────────────────────────── */}
       {tab === 'audit' && (
         <div>
-          <div className="flex gap-3 mb-4">
+          <div className="flex flex-wrap gap-3 mb-4">
             <input
               value={auditSearch}
               onChange={e => setAuditSearch(e.target.value)}
-              className="form-input flex-1"
+              className="form-input flex-1 min-w-48"
               placeholder="ค้นหาผู้ใช้, โมดูล, การกระทำ..."
             />
+            <div className="flex items-center gap-2">
+              <Calendar size={14} className="text-gray-400" />
+              <input type="date" value={auditDateFrom} onChange={e => setAuditDateFrom(e.target.value)} className="form-input w-auto text-sm" />
+              <span className="text-gray-400 text-sm">–</span>
+              <input type="date" value={auditDateTo}   onChange={e => setAuditDateTo(e.target.value)}   className="form-input w-auto text-sm" />
+              {(auditDateFrom || auditDateTo) && (
+                <button onClick={() => { setAuditDateFrom(''); setAuditDateTo(''); }} className="text-xs text-primary hover:underline">ล้าง</button>
+              )}
+            </div>
           </div>
+          <p className="text-xs text-gray-400 mb-3">แสดง {filteredLogs.length} รายการ</p>
           <div className="card overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
@@ -275,9 +372,10 @@ export default function Admin() {
                     <td className="px-4 py-3 font-mono text-xs text-gray-700">{l.username}</td>
                     <td className="px-4 py-3">
                       <span className={`status-badge text-[10px] ${
-                        l.action === 'CREATE' ? 'bg-green-50 text-green-700' :
-                        l.action === 'DELETE' ? 'bg-red-50 text-red-700' :
-                        l.action === 'MATCH' ? 'bg-purple-50 text-purple-700' :
+                        l.action === 'CREATE'  ? 'bg-green-50 text-green-700' :
+                        l.action === 'DELETE'  ? 'bg-red-50 text-red-700' :
+                        l.action === 'MATCH'   ? 'bg-purple-50 text-purple-700' :
+                        l.action === 'RETURN'  ? 'bg-teal-50 text-teal-700' :
                         'bg-blue-50 text-blue-700'
                       }`}>{l.action}</span>
                     </td>
@@ -286,38 +384,32 @@ export default function Admin() {
                     <td className="px-4 py-3 text-xs font-mono text-gray-400">{l.ipAddress}</td>
                   </tr>
                 ))}
+                {filteredLogs.length === 0 && (
+                  <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">ไม่พบรายการ</td></tr>
+                )}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* Settings Tab */}
+      {/* ── Settings Tab ───────────────────────────────────────────────────── */}
       {tab === 'settings' && (
         <div className="max-w-md space-y-6">
           <div className="card p-6 space-y-4">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Clock size={16} className="text-primary" /> Session Timeout
+              <Clock size={16} className="text-primary" /> Session Timeout (TOR 4.9.1.6)
             </h3>
             <div>
               <label className="form-label">ระยะเวลา Timeout (นาที)</label>
               <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min={5}
-                  max={120}
-                  step={5}
-                  value={sessionMin}
-                  onChange={e => setSessionMin(Number(e.target.value))}
-                  className="flex-1 accent-primary"
-                />
+                <input type="range" min={5} max={120} step={5} value={sessionMin}
+                  onChange={e => setSessionMin(Number(e.target.value))} className="flex-1 accent-primary" />
                 <span className="text-lg font-bold text-gray-900 w-16 text-right">{sessionMin} นาที</span>
               </div>
             </div>
-            <button
-              onClick={() => updateSettings({ sessionTimeoutMinutes: sessionMin })}
-              className="btn-primary flex items-center gap-2 text-sm"
-            >
+            <button onClick={() => updateSettings({ sessionTimeoutMinutes: sessionMin })}
+              className="btn-primary flex items-center gap-2 text-sm">
               <Shield size={14} /> บันทึกการตั้งค่า
             </button>
             <p className="text-xs text-gray-400">ระบบจะออกจากหน้าจออัตโนมัติเมื่อไม่มีการใช้งานเกิน {sessionMin} นาที</p>
@@ -327,13 +419,13 @@ export default function Admin() {
             <h3 className="font-semibold text-gray-900">ข้อมูลองค์กร</h3>
             <div>
               <label className="form-label">ชื่อองค์กร</label>
-              <input defaultValue="ClickNext Innovation" className="form-input" />
+              <input defaultValue={settings.organizationName || 'ClickNext Innovation'} className="form-input" />
             </div>
           </div>
         </div>
       )}
 
-      {/* User Modal */}
+      {/* ── User Modal ─────────────────────────────────────────────────────── */}
       <Modal open={userModal} onClose={() => setUserModal(false)} title={editUser ? 'แก้ไขผู้ใช้งาน' : 'เพิ่มผู้ใช้งาน'} size="md">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -349,7 +441,7 @@ export default function Admin() {
               <label className="form-label">ชื่อ-นามสกุล</label>
               <input value={uForm.fullName} onChange={e => setUForm(f => ({ ...f, fullName: e.target.value }))} className="form-input" />
             </div>
-            <div className="col-span-2">
+            <div>
               <label className="form-label">บทบาท</label>
               <select value={uForm.role} onChange={e => setUForm(f => ({ ...f, role: e.target.value as User['role'] }))} className="form-input">
                 <option value="staff">Staff</option>
@@ -357,18 +449,22 @@ export default function Admin() {
                 <option value="viewer">Viewer</option>
               </select>
             </div>
+            <div>
+              <label className="form-label">กลุ่มผู้ใช้</label>
+              <select value={uForm.groupId} onChange={e => applyGroupPerms(e.target.value)} className="form-input">
+                <option value="">— ไม่ระบุกลุ่ม —</option>
+                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </div>
           </div>
           <div>
-            <label className="form-label">สิทธิ์การใช้งาน</label>
+            <label className="form-label">สิทธิ์การใช้งาน (รายบุคคล)</label>
             <div className="grid grid-cols-2 gap-2">
               {PERM_LABELS.map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={uForm.permissions[key]}
+                  <input type="checkbox" checked={uForm.permissions[key]}
                     onChange={e => setUForm(f => ({ ...f, permissions: { ...f.permissions, [key]: e.target.checked } }))}
-                    className="rounded accent-primary"
-                  />
+                    className="rounded accent-primary" />
                   {label}
                 </label>
               ))}
@@ -381,7 +477,34 @@ export default function Admin() {
         </div>
       </Modal>
 
-      {/* Category Modal */}
+      {/* ── Group Modal ────────────────────────────────────────────────────── */}
+      <Modal open={groupModal} onClose={() => setGroupModal(false)} title={editGroup ? 'แก้ไขกลุ่ม' : 'เพิ่มกลุ่มผู้ใช้'} size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="form-label">ชื่อกลุ่ม</label>
+            <input value={gForm.name} onChange={e => setGForm(f => ({ ...f, name: e.target.value }))} className="form-input" placeholder="เช่น เจ้าหน้าที่ชั้น 1" />
+          </div>
+          <div>
+            <label className="form-label">สิทธิ์ของกลุ่ม</label>
+            <div className="grid grid-cols-2 gap-2">
+              {PERM_LABELS.map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={gForm.permissions[key]}
+                    onChange={e => setGForm(f => ({ ...f, permissions: { ...f.permissions, [key]: e.target.checked } }))}
+                    className="rounded accent-primary" />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setGroupModal(false)} className="btn-secondary flex-1">ยกเลิก</button>
+            <button onClick={saveGroup} className="btn-primary flex-1">บันทึก</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Category Modal ─────────────────────────────────────────────────── */}
       <Modal open={catModal} onClose={() => setCatModal(false)} title={editCat ? 'แก้ไขประเภท' : 'เพิ่มประเภท'} size="sm">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -409,7 +532,7 @@ export default function Admin() {
         </div>
       </Modal>
 
-      {/* Area Modal */}
+      {/* ── Area Modal ─────────────────────────────────────────────────────── */}
       <Modal open={areaModal} onClose={() => setAreaModal(false)} title={editArea ? 'แก้ไขบริเวณ' : 'เพิ่มบริเวณ'} size="sm">
         <div className="space-y-4">
           <div>
@@ -432,6 +555,25 @@ export default function Admin() {
           </div>
         </div>
       </Modal>
+
+      {/* ── Storage Location Modal ─────────────────────────────────────────── */}
+      <Modal open={storageModal} onClose={() => setStorageModal(false)} title={editStorage ? 'แก้ไขที่จัดเก็บ' : 'เพิ่มที่จัดเก็บ'} size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="form-label">ชื่อสถานที่จัดเก็บ</label>
+            <input value={slForm.name} onChange={e => setSlForm(f => ({ ...f, name: e.target.value }))} className="form-input" placeholder="เช่น ตู้ C-01" />
+          </div>
+          <div>
+            <label className="form-label">ความจุ (ชิ้น)</label>
+            <input value={slForm.capacity} onChange={e => setSlForm(f => ({ ...f, capacity: Number(e.target.value) }))} type="number" className="form-input" min={1} />
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setStorageModal(false)} className="btn-secondary flex-1">ยกเลิก</button>
+            <button onClick={saveStorage} className="btn-primary flex-1">บันทึก</button>
+          </div>
+        </div>
+      </Modal>
+
     </PageWrapper>
   );
 }

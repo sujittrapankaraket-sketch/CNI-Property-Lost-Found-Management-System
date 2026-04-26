@@ -1,18 +1,28 @@
 import { useMemo, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend } from 'recharts';
-import { endOfMonth, format, isWithinInterval, parseISO, startOfMonth, subMonths } from 'date-fns';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend,
+} from 'recharts';
+import {
+  addDays, addMonths, differenceInDays, endOfMonth, format,
+  isWithinInterval, parseISO, startOfMonth, subDays, subMonths,
+} from 'date-fns';
 import { th } from 'date-fns/locale';
-import { Printer, TrendingUp } from 'lucide-react';
+import { Printer, TrendingUp, Calendar } from 'lucide-react';
 import PageWrapper from '../../components/layout/PageWrapper';
 import { useData } from '../../context/DataContext';
 
-type Tab = 'lost' | 'found' | 'user';
+type Tab    = 'lost' | 'found' | 'user';
+type Period = 'day' | 'month' | 'year';
 
 const COLORS = ['#C8102E', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
 export default function Reports() {
   const { lostReports, foundReports, masterData, auditLogs } = useData();
-  const [tab, setTab] = useState<Tab>('lost');
+  const [tab, setTab]         = useState<Tab>('lost');
+  const [period, setPeriod]   = useState<Period>('month');
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo,   setRangeTo]   = useState('');
 
   const TABS = [
     { key: 'lost',  label: 'รายงานสูญหาย' },
@@ -20,62 +30,180 @@ export default function Reports() {
     { key: 'user',  label: 'ปฏิบัติงานผู้ใช้' },
   ] as const;
 
-  // ── real monthly data (6 months) ─────────────────────────────────────────
-  const monthlyData = useMemo(() => {
-    return Array.from({ length: 6 }, (_, i) => {
-      const d = subMonths(new Date(), 5 - i);
-      const interval = { start: startOfMonth(d), end: endOfMonth(d) };
-      const inInterval = (s: string) => {
-        try { return isWithinInterval(parseISO(s), interval); } catch { return false; }
-      };
-      return {
-        month:    format(d, 'MMM yy', { locale: th }),
-        lost:     lostReports.filter(r => inInterval(r.createdAt)).length,
-        found:    foundReports.filter(r => inInterval(r.createdAt)).length,
-        matched:  lostReports.filter(r => r.status === 'matched' && inInterval(r.createdAt)).length,
-        returned: foundReports.filter(r => r.status === 'returned' && inInterval(r.returnedAt ?? r.createdAt)).length,
-      };
-    });
-  }, [lostReports, foundReports]);
+  const PERIODS: { key: Period; label: string }[] = [
+    { key: 'day',   label: 'รายวัน' },
+    { key: 'month', label: 'รายเดือน' },
+    { key: 'year',  label: 'รายปี' },
+  ];
 
-  // ── user activity from real data ──────────────────────────────────────────
+  // ── date-range filter for summary cards & pie charts ────────────────────
+  const filteredLost = useMemo(() => {
+    if (!rangeFrom && !rangeTo) return lostReports;
+    return lostReports.filter(r => {
+      const d = r.createdAt.split('T')[0];
+      return (!rangeFrom || d >= rangeFrom) && (!rangeTo || d <= rangeTo);
+    });
+  }, [lostReports, rangeFrom, rangeTo]);
+
+  const filteredFound = useMemo(() => {
+    if (!rangeFrom && !rangeTo) return foundReports;
+    return foundReports.filter(r => {
+      const d = r.createdAt.split('T')[0];
+      return (!rangeFrom || d >= rangeFrom) && (!rangeTo || d <= rangeTo);
+    });
+  }, [foundReports, rangeFrom, rangeTo]);
+
+  const filteredAudit = useMemo(() => {
+    if (!rangeFrom && !rangeTo) return auditLogs;
+    return auditLogs.filter(l => {
+      const d = l.timestamp.split('T')[0];
+      return (!rangeFrom || d >= rangeFrom) && (!rangeTo || d <= rangeTo);
+    });
+  }, [auditLogs, rangeFrom, rangeTo]);
+
+  // ── period-based chart data (TOR 4.8.1, 4.8.2) ──────────────────────────
+  const reportData = useMemo(() => {
+    const now = new Date();
+    type Row = { label: string; lost: number; found: number; matched: number; returned: number };
+
+    if (period === 'day') {
+      const start = rangeFrom ? parseISO(rangeFrom) : subDays(now, 29);
+      const end   = rangeTo   ? parseISO(rangeTo)   : now;
+      const days  = Math.min(Math.max(differenceInDays(end, start) + 1, 1), 60);
+      const rows: Row[] = [];
+      for (let i = 0; i < days; i++) {
+        const d  = addDays(start, i);
+        const ds = format(d, 'yyyy-MM-dd');
+        rows.push({
+          label:    format(d, 'd/M', { locale: th }),
+          lost:     lostReports.filter(r => r.createdAt.startsWith(ds)).length,
+          found:    foundReports.filter(r => r.createdAt.startsWith(ds)).length,
+          matched:  lostReports.filter(r => r.status === 'matched' && r.createdAt.startsWith(ds)).length,
+          returned: foundReports.filter(r => r.status === 'returned' && (r.returnedAt ?? r.createdAt).startsWith(ds)).length,
+        });
+      }
+      return rows;
+    }
+
+    if (period === 'year') {
+      const endY   = rangeTo   ? parseISO(rangeTo).getFullYear()   : now.getFullYear();
+      const startY = rangeFrom ? parseISO(rangeFrom).getFullYear() : endY - 4;
+      const rows: Row[] = [];
+      for (let y = startY; y <= Math.min(endY, startY + 9); y++) {
+        const ys = String(y);
+        rows.push({
+          label:    `พ.ศ.${y + 543}`,
+          lost:     lostReports.filter(r => r.createdAt.startsWith(ys)).length,
+          found:    foundReports.filter(r => r.createdAt.startsWith(ys)).length,
+          matched:  lostReports.filter(r => r.status === 'matched' && r.createdAt.startsWith(ys)).length,
+          returned: foundReports.filter(r => r.status === 'returned' && (r.returnedAt ?? r.createdAt).startsWith(ys)).length,
+        });
+      }
+      return rows;
+    }
+
+    // month
+    const start = startOfMonth(rangeFrom ? parseISO(rangeFrom) : subMonths(now, 11));
+    const end   = endOfMonth(rangeTo ? parseISO(rangeTo) : now);
+    const rows: Row[] = [];
+    let cur = start;
+    while (cur <= end && rows.length < 24) {
+      const interval = { start: startOfMonth(cur), end: endOfMonth(cur) };
+      const inI = (s: string) => { try { return isWithinInterval(parseISO(s), interval); } catch { return false; } };
+      rows.push({
+        label:    format(cur, 'MMM yy', { locale: th }),
+        lost:     lostReports.filter(r => inI(r.createdAt)).length,
+        found:    foundReports.filter(r => inI(r.createdAt)).length,
+        matched:  lostReports.filter(r => r.status === 'matched' && inI(r.createdAt)).length,
+        returned: foundReports.filter(r => r.status === 'returned' && inI(r.returnedAt ?? r.createdAt)).length,
+      });
+      cur = addMonths(cur, 1);
+    }
+    return rows;
+  }, [lostReports, foundReports, period, rangeFrom, rangeTo]);
+
+  // ── user activity (TOR 4.8.3) ────────────────────────────────────────────
   const userActivity = useMemo(() => {
     const usernames = [...new Set([
-      ...lostReports.map(r => r.createdBy),
-      ...foundReports.map(r => r.createdBy),
+      ...filteredLost.map(r => r.createdBy),
+      ...filteredFound.map(r => r.createdBy),
     ])].filter(Boolean);
 
     return usernames.map(username => ({
       username,
-      lostReceived:  lostReports.filter(r => r.createdBy === username).length,
-      foundReceived: foundReports.filter(r => r.createdBy === username).length,
-      returned:      auditLogs.filter(l => l.username === username && l.action === 'RETURN').length,
+      lostReceived:  filteredLost.filter(r => r.createdBy === username).length,
+      foundReceived: filteredFound.filter(r => r.createdBy === username).length,
+      returned:      filteredAudit.filter(l => l.username === username && l.action === 'RETURN').length,
     }));
-  }, [lostReports, foundReports, auditLogs]);
+  }, [filteredLost, filteredFound, filteredAudit]);
 
-  // ── category breakdowns ───────────────────────────────────────────────────
+  // ── category & area breakdowns ────────────────────────────────────────────
   const lostByCat = masterData.categories.map(c => ({
     name: c.name,
-    value: lostReports.filter(r => r.categoryId === c.id).length,
+    value: filteredLost.filter(r => r.categoryId === c.id).length,
   })).filter(d => d.value > 0);
 
   const foundByCat = masterData.categories.map(c => ({
     name: c.name,
-    value: foundReports.filter(r => r.categoryId === c.id).length,
+    value: filteredFound.filter(r => r.categoryId === c.id).length,
   })).filter(d => d.value > 0);
 
   const foundByArea = masterData.areas.map(a => ({
     name: a.name.split(' - ')[1] || a.name,
-    value: foundReports.filter(r => r.foundAreaId === a.id).length,
+    value: filteredFound.filter(r => r.foundAreaId === a.id).length,
   })).filter(d => d.value > 0);
 
   // ── summary numbers ───────────────────────────────────────────────────────
-  const returnedCount    = foundReports.filter(r => r.status === 'returned').length;
-  const pendingReturn    = foundReports.filter(r => r.status === 'pending_return').length;
-  const disposalCount    = foundReports.filter(r => r.status === 'disposal_requested').length;
-  const expiredCount     = foundReports.filter(r => r.status === 'expired').length;
-  const returnRate       = foundReports.length > 0
-    ? Math.round((returnedCount / foundReports.length) * 100) : 0;
+  const returnedCount = filteredFound.filter(r => r.status === 'returned').length;
+  const pendingReturn = filteredFound.filter(r => r.status === 'pending_return').length;
+  const disposalCount = filteredFound.filter(r => r.status === 'disposal_requested').length;
+  const expiredCount  = filteredFound.filter(r => r.status === 'expired').length;
+  const returnRate    = filteredFound.length > 0
+    ? Math.round((returnedCount / filteredFound.length) * 100) : 0;
+
+  // ── shared period + range controls ───────────────────────────────────────
+  const PeriodControls = () => (
+    <div className="flex flex-wrap items-center gap-3 mb-5 p-3 bg-gray-50 rounded-xl no-print">
+      {/* period buttons */}
+      <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+        {PERIODS.map(p => (
+          <button
+            key={p.key}
+            onClick={() => { setPeriod(p.key); setRangeFrom(''); setRangeTo(''); }}
+            className={`px-3 py-1.5 font-medium transition-colors ${
+              period === p.key ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {/* date range */}
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Calendar size={14} className="text-gray-400" />
+        <input
+          type="date"
+          value={rangeFrom}
+          onChange={e => setRangeFrom(e.target.value)}
+          className="form-input w-auto text-sm"
+          placeholder="ตั้งแต่"
+        />
+        <span className="text-gray-400">–</span>
+        <input
+          type="date"
+          value={rangeTo}
+          onChange={e => setRangeTo(e.target.value)}
+          className="form-input w-auto text-sm"
+          placeholder="ถึง"
+        />
+        {(rangeFrom || rangeTo) && (
+          <button onClick={() => { setRangeFrom(''); setRangeTo(''); }} className="text-xs text-primary hover:underline">
+            ล้าง
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <PageWrapper
@@ -102,15 +230,17 @@ export default function Reports() {
         ))}
       </div>
 
-      {/* ── Lost Stats ─────────────────────────────────────────────────────── */}
+      {/* ── Lost Stats (TOR 4.8.1) ─────────────────────────────────────────── */}
       {tab === 'lost' && (
         <div className="space-y-4">
+          <PeriodControls />
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'ทั้งหมด',       value: lostReports.length,                                    color: 'text-gray-900' },
-              { label: 'รอดำเนินการ',   value: lostReports.filter(r => r.status === 'open').length,    color: 'text-amber-600' },
-              { label: 'จับคู่แล้ว',    value: lostReports.filter(r => r.status === 'matched').length, color: 'text-green-600' },
-              { label: 'ปิดแล้ว',       value: lostReports.filter(r => r.status === 'closed').length,  color: 'text-blue-600' },
+              { label: 'ทั้งหมด',     value: filteredLost.length,                                      color: 'text-gray-900' },
+              { label: 'รอดำเนินการ', value: filteredLost.filter(r => r.status === 'open').length,     color: 'text-amber-600' },
+              { label: 'จับคู่แล้ว',  value: filteredLost.filter(r => r.status === 'matched').length,  color: 'text-green-600' },
+              { label: 'ปิดแล้ว',     value: filteredLost.filter(r => r.status === 'closed').length,   color: 'text-blue-600' },
             ].map(s => (
               <div key={s.label} className="card p-4 text-center">
                 <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
@@ -121,11 +251,13 @@ export default function Reports() {
 
           <div className="grid lg:grid-cols-2 gap-4">
             <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">รายการสูญหายรายเดือน</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                รายการสูญหาย{period === 'day' ? 'รายวัน' : period === 'year' ? 'รายปี' : 'รายเดือน'}
+              </h3>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={monthlyData} barSize={18}>
+                <BarChart data={reportData} barSize={18}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
                   <Legend wrapperStyle={{ fontSize: '12px' }} />
@@ -159,18 +291,19 @@ export default function Reports() {
         </div>
       )}
 
-      {/* ── Found Stats ─────────────────────────────────────────────────────── */}
+      {/* ── Found Stats (TOR 4.8.2) ────────────────────────────────────────── */}
       {tab === 'found' && (
         <div className="space-y-4">
-          {/* Summary cards */}
+          <PeriodControls />
+
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              { label: 'ทั้งหมด',          value: foundReports.length,  color: 'text-gray-900'   },
-              { label: 'กำลังจัดเก็บ',     value: foundReports.filter(r => r.status === 'stored').length, color: 'text-blue-600' },
-              { label: 'รอส่งคืน',         value: pendingReturn,        color: 'text-purple-600' },
-              { label: 'ส่งคืนแล้ว',       value: returnedCount,        color: 'text-green-600'  },
-              { label: 'รอทิ้ง/ทำลาย',     value: disposalCount,        color: 'text-orange-600' },
-              { label: 'หมดอายุ',           value: expiredCount,         color: 'text-red-600'    },
+              { label: 'ทั้งหมด',      value: filteredFound.length,  color: 'text-gray-900'   },
+              { label: 'กำลังจัดเก็บ', value: filteredFound.filter(r => r.status === 'stored').length, color: 'text-blue-600' },
+              { label: 'รอส่งคืน',     value: pendingReturn,         color: 'text-purple-600' },
+              { label: 'ส่งคืนแล้ว',   value: returnedCount,         color: 'text-green-600'  },
+              { label: 'รอทิ้ง/ทำลาย', value: disposalCount,         color: 'text-orange-600' },
+              { label: 'หมดอายุ',       value: expiredCount,          color: 'text-red-600'    },
             ].map(s => (
               <div key={s.label} className="card p-4 text-center">
                 <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
@@ -179,7 +312,6 @@ export default function Reports() {
             ))}
           </div>
 
-          {/* Return rate highlight */}
           <div className="card p-4 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
               <TrendingUp size={22} className="text-green-600" />
@@ -188,7 +320,7 @@ export default function Reports() {
               <div className="text-xs text-gray-500 mb-1">อัตราการส่งคืนทรัพย์สิน</div>
               <div className="flex items-end gap-2">
                 <span className="text-3xl font-bold text-green-600">{returnRate}%</span>
-                <span className="text-sm text-gray-500 mb-1">({returnedCount} จาก {foundReports.length} รายการ)</span>
+                <span className="text-sm text-gray-500 mb-1">({returnedCount} จาก {filteredFound.length} รายการ)</span>
               </div>
               <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${returnRate}%` }} />
@@ -197,13 +329,14 @@ export default function Reports() {
           </div>
 
           <div className="grid lg:grid-cols-2 gap-4">
-            {/* Monthly trend: found vs returned */}
             <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">พบ vs ส่งคืนรายเดือน</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                พบ vs ส่งคืน{period === 'day' ? 'รายวัน' : period === 'year' ? 'รายปี' : 'รายเดือน'}
+              </h3>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={monthlyData} barSize={18}>
+                <BarChart data={reportData} barSize={18}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
                   <Legend wrapperStyle={{ fontSize: '12px' }} />
@@ -213,7 +346,6 @@ export default function Reports() {
               </ResponsiveContainer>
             </div>
 
-            {/* By area */}
             <div className="card p-5">
               <h3 className="text-sm font-semibold text-gray-900 mb-4">แยกตามบริเวณที่พบ</h3>
               {foundByArea.length > 0 ? (
@@ -231,13 +363,12 @@ export default function Reports() {
               )}
             </div>
 
-            {/* Comparison line chart */}
             <div className="card p-5">
               <h3 className="text-sm font-semibold text-gray-900 mb-4">เปรียบเทียบ สูญหาย vs พบ vs คืน</h3>
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={monthlyData}>
+                <LineChart data={reportData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
                   <Legend wrapperStyle={{ fontSize: '12px' }} />
@@ -248,7 +379,6 @@ export default function Reports() {
               </ResponsiveContainer>
             </div>
 
-            {/* By category */}
             <div className="card p-5">
               <h3 className="text-sm font-semibold text-gray-900 mb-4">แยกตามประเภทหลงลืม</h3>
               {foundByCat.length > 0 ? (
@@ -273,15 +403,26 @@ export default function Reports() {
         </div>
       )}
 
-      {/* ── User Activity ───────────────────────────────────────────────────── */}
+      {/* ── User Activity (TOR 4.8.3) ──────────────────────────────────────── */}
       {tab === 'user' && (
         <div className="space-y-4">
-          {/* Summary */}
+          {/* date range filter only (no period needed for user activity) */}
+          <div className="flex flex-wrap items-center gap-3 p-3 bg-gray-50 rounded-xl no-print">
+            <Calendar size={14} className="text-gray-400" />
+            <span className="text-xs text-gray-500">ช่วงเวลา:</span>
+            <input type="date" value={rangeFrom} onChange={e => setRangeFrom(e.target.value)} className="form-input w-auto text-sm" />
+            <span className="text-gray-400 text-sm">–</span>
+            <input type="date" value={rangeTo}   onChange={e => setRangeTo(e.target.value)}   className="form-input w-auto text-sm" />
+            {(rangeFrom || rangeTo) && (
+              <button onClick={() => { setRangeFrom(''); setRangeTo(''); }} className="text-xs text-primary hover:underline">ล้าง</button>
+            )}
+          </div>
+
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: 'รับแจ้งสูญหายรวม',   value: lostReports.length,   color: 'text-red-600'   },
-              { label: 'รับนำส่งหลงลืมรวม',  value: foundReports.length,  color: 'text-blue-600'  },
-              { label: 'ส่งมอบคืนทั้งหมด',    value: auditLogs.filter(l => l.action === 'RETURN').length, color: 'text-green-600' },
+              { label: 'รับแจ้งสูญหายรวม',  value: filteredLost.length,                                                  color: 'text-red-600'   },
+              { label: 'รับนำส่งหลงลืมรวม', value: filteredFound.length,                                                 color: 'text-blue-600'  },
+              { label: 'ส่งมอบคืนทั้งหมด',  value: filteredAudit.filter(l => l.action === 'RETURN').length, color: 'text-green-600' },
             ].map(s => (
               <div key={s.label} className="card p-4 text-center">
                 <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>

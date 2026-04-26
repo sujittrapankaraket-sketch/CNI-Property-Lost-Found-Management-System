@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import type { User, PermissionMap, SystemSettings } from '../types';
-import { canUseRemoteDataStore, deleteUserRecord, loadUsers, upsertUser } from '../services/dataStore';
+import type { User, UserGroup, PermissionMap, SystemSettings } from '../types';
+import {
+  canUseRemoteDataStore,
+  deleteUserRecord,
+  loadUsers,
+  upsertUser,
+  loadUserGroups,
+  upsertUserGroup,
+  deleteUserGroup,
+} from '../services/dataStore';
 
 const DEFAULT_PERMISSIONS: PermissionMap = {
   lost_report: true,
@@ -19,6 +27,12 @@ const ADMIN_PERMISSIONS: PermissionMap = {
   reports: true,
   admin: true,
 };
+
+const MOCK_GROUPS: UserGroup[] = [
+  { id: 'g1', name: 'ผู้ดูแลระบบ', permissions: ADMIN_PERMISSIONS },
+  { id: 'g2', name: 'เจ้าหน้าที่', permissions: DEFAULT_PERMISSIONS },
+  { id: 'g3', name: 'ผู้ชม', permissions: { ...DEFAULT_PERMISSIONS, lost_report: false, found_report: false, admin: false } },
+];
 
 const MOCK_USERS: (User & { password: string })[] = [
   {
@@ -67,6 +81,10 @@ interface AuthContextType {
   updateUser: (user: User) => void;
   addUser: (user: User & { password: string }) => void;
   deleteUser: (id: string) => void;
+  getGroups: () => UserGroup[];
+  addGroup: (group: UserGroup) => void;
+  updateGroup: (group: UserGroup) => void;
+  deleteGroup: (id: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -77,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return stored ? JSON.parse(stored) : null;
   });
   const [users, setUsers] = useState<(User & { password: string })[]>(MOCK_USERS);
+  const [groups, setGroups] = useState<UserGroup[]>(MOCK_GROUPS);
   const [settings, setSettings] = useState<SystemSettings>({
     sessionTimeoutMinutes: 30,
     organizationName: 'ClickNext Innovation',
@@ -84,6 +103,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── sync groups with Supabase ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!canUseRemoteDataStore) return;
+    loadUserGroups().then(remoteGroups => {
+      if (!remoteGroups) return;
+      if (remoteGroups.length > 0) {
+        setGroups(remoteGroups);
+      } else {
+        MOCK_GROUPS.forEach(g => {
+          void upsertUserGroup(g).catch(err => console.error('Failed to seed group', err));
+        });
+      }
+    }).catch(err => console.error('Failed to load groups from Supabase', err));
+  }, []);
 
   // ── sync users with Supabase ──────────────────────────────────────────────
   useEffect(() => {
@@ -166,6 +200,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void deleteUserRecord(id).catch(err => console.error('Failed to delete user', err));
   };
 
+  const getGroups = () => groups;
+
+  const addGroup = (group: UserGroup) => {
+    setGroups(prev => [...prev, group]);
+    void upsertUserGroup(group).catch(err => console.error('Failed to sync group', err));
+  };
+
+  const updateGroup = (group: UserGroup) => {
+    setGroups(prev => prev.map(g => g.id === group.id ? group : g));
+    void upsertUserGroup(group).catch(err => console.error('Failed to sync group', err));
+  };
+
+  const deleteGroup = (id: string) => {
+    setGroups(prev => prev.filter(g => g.id !== id));
+    void deleteUserGroup(id).catch(err => console.error('Failed to delete group', err));
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -178,6 +229,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateUser,
       addUser,
       deleteUser,
+      getGroups,
+      addGroup,
+      updateGroup,
+      deleteGroup,
     }}>
       {children}
     </AuthContext.Provider>

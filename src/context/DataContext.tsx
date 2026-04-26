@@ -8,6 +8,7 @@ import {
   canUseRemoteDataStore,
   deleteArea,
   deleteCategory,
+  deleteStorageLocationRecord,
   insertAuditLog,
   loadRemoteAppState,
   upsertArea,
@@ -169,6 +170,8 @@ interface DataContextType {
   updateArea: (a: Area) => void;
   deleteArea: (id: string) => void;
   addStorageLocation: (s: StorageLocation) => void;
+  updateStorageLocation: (s: StorageLocation) => void;
+  deleteStorageLocation: (id: string) => void;
   addToast: (t: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
   addAuditLog: (log: Omit<AuditLog, 'id'>) => void;
@@ -358,6 +361,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     void upsertStorageLocation(s).catch(err => console.error('Failed to sync storage location', err));
   };
 
+  const updateStorageLocation = (s: StorageLocation) => {
+    setStorageLocations(prev => prev.map(x => x.id === s.id ? s : x));
+    void upsertStorageLocation(s).catch(err => console.error('Failed to sync storage location', err));
+  };
+
+  const deleteStorageLoc = (id: string) => {
+    setStorageLocations(prev => prev.filter(x => x.id !== id));
+    void deleteStorageLocationRecord(id).catch(err => console.error('Failed to delete storage location', err));
+  };
+
   return (
     <DataContext.Provider value={{
       lostReports,
@@ -377,6 +390,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       updateArea,
       deleteArea: deleteAreaLocal,
       addStorageLocation,
+      updateStorageLocation,
+      deleteStorageLocation: deleteStorageLoc,
       addToast,
       removeToast,
       addAuditLog,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, GitMerge, CheckCircle2, AlertCircle, Package, Mail, FileSignature } from 'lucide-react';
+import { Search, GitMerge, CheckCircle2, AlertCircle, Package, Mail, FileSignature, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import PageWrapper from '../../components/layout/PageWrapper';
@@ -18,6 +18,8 @@ export default function SearchMatch() {
   const [keyword, setKeyword] = useState('');
   const [filterCat, setFilterCat] = useState('');
   const [filterArea, setFilterArea] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [selectedLost, setSelectedLost] = useState<LostReport | null>(null);
   const [selectedFound, setSelectedFound] = useState<FoundReport | null>(null);
   const [confirmModal, setConfirmModal] = useState(false);
@@ -42,8 +44,18 @@ export default function SearchMatch() {
     return matchQ && matchC && matchA;
   });
 
-  const filteredLost = filterItems(lostReports, 'lostAreaId');
-  const filteredFound = filterItems(foundReports, 'foundAreaId').filter(r => r.status === 'stored');
+  const inDateRange = (dateStr: string) => {
+    if (!dateFrom && !dateTo) return true;
+    if (!dateStr) return true;
+    if (dateFrom && dateStr < dateFrom) return false;
+    if (dateTo && dateStr > dateTo) return false;
+    return true;
+  };
+
+  const filteredLost = filterItems(lostReports.filter(r => r.status === 'open'), 'lostAreaId')
+    .filter(r => inDateRange(r.lostDateFrom));
+  const filteredFound = filterItems(foundReports, 'foundAreaId')
+    .filter(r => r.status === 'stored' && inDateRange(r.foundDate));
 
   const getMatchScore = (l: LostReport, f: FoundReport) => {
     let score = 0;
@@ -92,19 +104,34 @@ export default function SearchMatch() {
   return (
     <PageWrapper title="ค้นหา / จับคู่ทรัพย์สิน" subtitle="ค้นหาและจับคู่ทรัพย์สินสูญหายกับทรัพย์สินที่พบ">
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={keyword} onChange={e => setKeyword(e.target.value)} className="form-input pl-9" placeholder="ค้นหาด้วยคำสำคัญ / RFID Tag..." />
+      <div className="flex flex-col gap-3 mb-6">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={keyword} onChange={e => setKeyword(e.target.value)} className="form-input pl-9" placeholder="ค้นหาด้วยคำสำคัญ / RFID Tag..." />
+          </div>
+          <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="form-input sm:w-44">
+            <option value="">ทุกประเภท</option>
+            {masterData.categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+          </select>
+          <select value={filterArea} onChange={e => setFilterArea(e.target.value)} className="form-input sm:w-48">
+            <option value="">ทุกบริเวณ</option>
+            {masterData.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
         </div>
-        <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="form-input sm:w-44">
-          <option value="">ทุกประเภท</option>
-          {masterData.categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-        </select>
-        <select value={filterArea} onChange={e => setFilterArea(e.target.value)} className="form-input sm:w-48">
-          <option value="">ทุกบริเวณ</option>
-          {masterData.areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
+        {/* TOR 4.6.1 — กรองตามวันที่/ช่วงเวลา */}
+        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+          <Calendar size={14} className="text-gray-400" />
+          <span className="text-xs">ช่วงวันที่:</span>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="form-input w-auto text-sm" />
+          <span className="text-gray-400">–</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="form-input w-auto text-sm" />
+          {(dateFrom || dateTo) && (
+            <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs text-primary hover:underline">
+              ล้างวันที่
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Selection bar */}
